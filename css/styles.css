@@ -814,6 +814,11 @@ main {
         font-size: 1.1rem;
     }
 
+    /* Hide "Clinic: " prefix on phone — italic style distinguishes it */
+    .clinic-label {
+        display: none;
+    }
+
     /* Touch targets — 44px minimum */
     .btn-logout {
         padding: 0.5rem 1rem;

@@ -378,7 +378,7 @@ function app() {
                 // Clinic doctor (Saturdays only, skip "Closed")
                 if (entry.clinicDoctor && entry.clinicDoctor !== 'Closed' && entry.clinicDoctor !== '') {
                     const cls = this.getDoctorColorClass(entry.clinicDoctor);
-                    html += `<div class="clinic-doctor-pill ${cls}">Clinic: ${entry.clinicDoctor}</div>`;
+                    html += `<div class="clinic-doctor-pill ${cls}"><span class="clinic-label">Clinic: </span>${entry.clinicDoctor}</div>`;
                 }
 
                 this.cellHtmlCache[dateStr] = html;
