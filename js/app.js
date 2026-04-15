@@ -451,14 +451,19 @@ function app() {
 
             this.calendar.render();
 
-            // Auto-scroll to the current month so users don't see past months first
+            // Hide month blocks before the current month so the calendar
+            // starts at the relevant month without scrolling past the cards.
             setTimeout(() => {
                 const todayCell = document.querySelector('.fc-day-today');
-                if (todayCell) {
-                    const monthBlock = todayCell.closest('.fc-multimonth-month');
-                    if (monthBlock) {
-                        monthBlock.scrollIntoView({ behavior: 'instant', block: 'start' });
+                if (!todayCell) return;
+                const currentMonth = todayCell.closest('.fc-multimonth-month');
+                if (!currentMonth) return;
+                let el = currentMonth.previousElementSibling;
+                while (el) {
+                    if (el.classList.contains('fc-multimonth-month')) {
+                        el.style.display = 'none';
                     }
+                    el = el.previousElementSibling;
                 }
             }, 50);
         },
