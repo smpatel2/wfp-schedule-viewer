@@ -379,6 +379,7 @@ main {
    ============================================ */
 .today-container {
     margin-bottom: 1.5rem;
+    min-height: 120px;
 }
 
 .today-cards {
@@ -453,6 +454,9 @@ main {
     font-weight: 900;
     line-height: 1.2;
     color: var(--oxford);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .today-card-label {
@@ -761,6 +765,99 @@ main {
     .clinic-doctor-pill {
         font-size: 0.75rem;
     }
+}
 
+/* --- Phone (≤480px) --- */
+@media (max-width: 480px) {
+    header {
+        padding: 0.5rem 0.75rem;
+    }
 
+    .today-container {
+        min-height: 100px;
+        margin-bottom: 1rem;
+    }
+
+    .today-card {
+        padding: 1rem 1rem;
+    }
+
+    .saturday-split {
+        flex-direction: column;
+        gap: 0;
+    }
+
+    /* Swap vertical divider to horizontal */
+    .saturday-split::after {
+        left: 12.5%;
+        right: 12.5%;
+        top: 50%;
+        bottom: auto;
+        width: auto;
+        height: 1px;
+    }
+
+    .saturday-right {
+        text-align: left;
+        padding-top: 0.375rem;
+    }
+
+    .saturday-left {
+        padding-bottom: 0.375rem;
+    }
+
+    .saturday-role {
+        font-size: 0.7rem;
+    }
+
+    .saturday-doctor {
+        font-size: 1.1rem;
+    }
+
+    /* Touch targets — 44px minimum */
+    .btn-logout {
+        padding: 0.5rem 1rem;
+        min-height: 44px;
+    }
+
+    .btn.btn-primary.btn-full {
+        min-height: 44px;
+    }
+
+    input, select, .select-with-prefix {
+        min-height: 44px;
+    }
+
+    /* Calendar cells — reclaim vertical space */
+    .fc .fc-daygrid-day-frame,
+    .fc .fc-multimonth .fc-daygrid-day-frame {
+        min-height: 3.25rem;
+        margin: 1px;
+    }
+
+    .fc .fc-multimonth-month {
+        border-radius: 0 12px 0 12px;
+        margin-bottom: 0.625rem;
+    }
+
+    /* Calendar pills — tighter on phones */
+    .doctor-name-pill {
+        font-size: 0.7rem;
+        padding: 1px 4px;
+        border-left-width: 1.5px;
+    }
+
+    .clinic-doctor-pill {
+        font-size: 0.65rem;
+        padding: 1px 4px;
+    }
+
+    .holiday-pill {
+        font-size: 0.65rem;
+        padding: 1px 4px;
+    }
+
+    .cell-day-num {
+        font-size: 0.7rem;
+    }
 }

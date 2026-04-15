@@ -3,6 +3,7 @@
     "short_name": "On-Call",
     "start_url": "/",
     "display": "standalone",
+    "orientation": "portrait",
     "background_color": "#ffffff",
     "theme_color": "#003B4A",
     "icons": [
