@@ -460,12 +460,12 @@ main {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    opacity: 0.7;
+    opacity: 0.9;
     margin-bottom: 0.375rem;
 }
 
 .today-card-primary .today-card-label {
-    color: rgba(255, 255, 255, 0.7);
+    color: rgba(255, 255, 255, 0.9);
 }
 
 .today-card-doctor {
@@ -694,8 +694,11 @@ main {
 /* Doctor name pill inside calendar cells */
 .doctor-name-pill {
     background: color-mix(in srgb, var(--doc-color, #6B7280) 10%, transparent);
-    color: var(--doc-color, #6B7280);
+    color: color-mix(in srgb, var(--doc-color, #6B7280) 70%, black);
     border-left: 2px solid var(--doc-color, #6B7280);
+    border-top: 1px solid color-mix(in srgb, var(--doc-color, #6B7280) 20%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--doc-color, #6B7280) 20%, transparent);
+    border-right: 1px solid color-mix(in srgb, var(--doc-color, #6B7280) 20%, transparent);
     padding: 2px 6px;
     border-radius: 5px;
     font-size: 0.75rem;
@@ -710,7 +713,8 @@ main {
 /* Clinic doctor pill — slightly different styling */
 .clinic-doctor-pill {
     background: color-mix(in srgb, var(--doc-color, #6B7280) 6%, transparent);
-    color: var(--doc-color, #6B7280);
+    color: color-mix(in srgb, var(--doc-color, #6B7280) 70%, black);
+    border: 1px solid color-mix(in srgb, var(--doc-color, #6B7280) 15%, transparent);
     padding: 2px 6px;
     border-radius: 5px;
     font-size: 0.75rem;
