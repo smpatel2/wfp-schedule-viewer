@@ -519,36 +519,6 @@ main {
     color: var(--text-muted);
 }
 
-/* ============================================
-   DOCTOR COLOR LEGEND
-   ============================================ */
-.doctor-legend {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    justify-content: center;
-    margin-bottom: 1.5rem;
-    padding: 0.75rem 1rem;
-    background: var(--card-bg);
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border);
-}
-
-.legend-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--text);
-}
-
-.legend-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    flex-shrink: 0;
-}
 
 /* ============================================
    CALENDAR CONTAINER
@@ -792,12 +762,5 @@ main {
         font-size: 0.75rem;
     }
 
-    .doctor-legend {
-        gap: 0.375rem;
-        padding: 0.5rem 0.75rem;
-    }
 
-    .legend-chip {
-        font-size: 0.75rem;
-    }
 }

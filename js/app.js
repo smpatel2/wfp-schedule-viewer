@@ -468,26 +468,6 @@ function app() {
             }, 50);
         },
 
-        // --- Doctor Legend ---
-        get legendDoctors() {
-            // Build legend from doctors who appear in the schedule
-            const seen = new Set();
-            for (const entry of Object.values(this.scheduleData)) {
-                if (entry.callDoctor) seen.add(entry.callDoctor);
-                if (entry.clinicDoctor && entry.clinicDoctor !== 'Closed' && entry.clinicDoctor !== '') {
-                    seen.add(entry.clinicDoctor);
-                }
-            }
-            // Sort by order
-            return this.doctors
-                .filter(d => seen.has(d.name))
-                .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-                .map(d => ({
-                    name: d.name,
-                    color: this.getDoctorColor(d.name),
-                    cls: this.getDoctorColorClass(d.name),
-                }));
-        },
 
         // --- Helpers ---
         formatDate(dateStr) {
