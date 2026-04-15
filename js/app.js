@@ -450,6 +450,17 @@ function app() {
             });
 
             this.calendar.render();
+
+            // Auto-scroll to the current month so users don't see past months first
+            setTimeout(() => {
+                const todayCell = document.querySelector('.fc-day-today');
+                if (todayCell) {
+                    const monthBlock = todayCell.closest('.fc-multimonth-month');
+                    if (monthBlock) {
+                        monthBlock.scrollIntoView({ behavior: 'instant', block: 'start' });
+                    }
+                }
+            }, 50);
         },
 
         // --- Doctor Legend ---
