@@ -228,6 +228,13 @@ function createFirestoreDb(db, auth) {
 }
 
 async function initDb() {
+    // Allow ?mock=true in the URL to force mock mode (for local preview)
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('mock') === 'true') {
+        console.log("[Schedule] Mock mode forced via ?mock=true");
+        return createMockDb();
+    }
+
     // Step 1: Try to load firebase-config.js
     let firebaseConfig = null;
     try {

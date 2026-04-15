@@ -20,7 +20,7 @@
 
     <!-- Firebase init (with mock fallback) -->
     <script type="module">
-        import { initDb } from "./js/firebase-init.js?v=2";
+        import { initDb } from "./js/firebase-init.js?v=3";
         window._dbReady = initDb().then(db => { window.db = db; return db; });
     </script>
 
@@ -28,7 +28,7 @@
     <link rel="manifest" href="manifest.json">
 
     <!-- App styles -->
-    <link rel="stylesheet" href="css/styles.css?v=2">
+    <link rel="stylesheet" href="css/styles.css?v=3">
 
     <!-- Service Worker registration -->
     <script>
@@ -206,6 +206,6 @@
     </div>
 
     <!-- App logic -->
-    <script src="js/app.js?v=2"></script>
+    <script src="js/app.js?v=3"></script>
 </body>
 </html>
