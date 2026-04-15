@@ -1,0 +1,749 @@
+/* ============================================
+   WFP On-Call Schedule Viewer
+   Duly Health & Care — Editorial Medical Theme
+   Adapted from vacation-portal-v2
+   ============================================ */
+
+/* --- Mock Mode Warning Banner --- */
+.mock-warning-banner {
+    background: #FFF3CD;
+    color: #664D03;
+    border-bottom: 2px solid #FFCA2C;
+    padding: 10px 20px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-align: center;
+    position: sticky;
+    top: 0;
+    z-index: 9999;
+}
+
+/* --- Reset & Base --- */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+:root {
+    /* Duly Health exact brand palette */
+    --oxford:       #003B4A;
+    --oxford-80:    rgba(0, 59, 74, 0.80);
+    --oxford-20:    rgba(0, 59, 74, 0.20);
+    --oxford-10:    rgba(0, 59, 74, 0.10);
+    --oxford-06:    rgba(0, 59, 74, 0.06);
+    --sky:          #008298;
+    --sky-10:       rgba(0, 130, 152, 0.10);
+    --sky-15:       rgba(0, 130, 152, 0.15);
+    --green:        #2E8540;
+    --green-12:     rgba(46, 133, 64, 0.12);
+    --error:        #C62828;
+    --error-08:     rgba(198, 40, 40, 0.08);
+
+    /* Neutrals */
+    --white:        #ffffff;
+    --bg:           #ffffff;
+    --card-bg:      #EEF1F5;
+    --text:         #0D1F26;
+    --text-muted:   #4a6670;
+    --border:       rgba(0, 59, 74, 0.14);
+
+    /* Typography */
+    --font:         'Outfit', system-ui, sans-serif;
+
+    /* Duly asymmetric radius */
+    --radius-card:  0px 32px 0px 32px;
+    --radius-btn:   5px;
+    --radius-pill:  999px;
+    --radius-sm:    10px;
+
+    /* Shadows — removed per Duly design language */
+    --shadow-sm:    none;
+    --shadow-md:    none;
+    --shadow-lg:    none;
+
+    /* Motion */
+    --ease:         cubic-bezier(0.4, 0, 0.2, 1);
+    --transition:   all 0.22s var(--ease);
+}
+
+html { font-size: 16px; }
+
+/* Split-weight typography */
+.heading-bold  { font-weight: 900; }
+.heading-light { font-weight: 300; }
+
+body {
+    font-family: var(--font);
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.5;
+    min-height: 100vh;
+}
+
+[x-cloak] { display: none !important; }
+
+/* ============================================
+   DULY ACCENT DIVIDER
+   ============================================ */
+.duly-divider {
+    display: flex;
+    height: 6px;
+    width: 100%;
+}
+.duly-divider-navy {
+    background: var(--oxford);
+    width: 33.333%;
+    border-radius: 0 0 0 999px;
+}
+.duly-divider-teal {
+    background: var(--sky);
+    flex: 1;
+    border-radius: 0 0 999px 0;
+}
+
+/* ============================================
+   LOGIN PAGE
+   ============================================ */
+#login-wrap {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    padding: 2rem;
+}
+
+#login-container {
+    width: 100%;
+    max-width: 400px;
+    background: var(--card-bg);
+    border-radius: var(--radius-card);
+    border: 1px solid var(--border);
+    overflow: hidden;
+}
+
+.login-header {
+    background: var(--oxford);
+    padding: 2rem 2rem 1.5rem;
+    position: relative;
+}
+
+.login-header h1 {
+    font-size: 1.4rem;
+    font-weight: 900;
+    color: var(--white);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    margin-bottom: 0.25rem;
+}
+
+.login-header h2 {
+    font-size: 0.875rem;
+    color: rgba(255,255,255,0.8);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-top: 0.375rem;
+}
+
+.login-body {
+    padding: 2rem;
+}
+
+.form-group {
+    margin-bottom: 1.125rem;
+}
+
+.password-wrapper {
+    position: relative;
+}
+
+.password-wrapper input {
+    padding-right: 2.75rem;
+}
+
+.btn-peek {
+    position: absolute;
+    right: 0.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+    opacity: 0.4;
+    transition: var(--transition);
+    padding: 0.25rem;
+    line-height: 1;
+}
+
+.btn-peek:hover { opacity: 0.85; }
+
+.error-message {
+    color: var(--error);
+    font-size: 0.8125rem;
+    margin-bottom: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--error-08);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--error);
+}
+
+.btn-full {
+    width: 100%;
+    margin-top: 0.25rem;
+}
+
+/* ============================================
+   HEADER
+   ============================================ */
+header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1.5rem;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 50;
+}
+
+.header-left { width: 120px; }
+
+header h1 {
+    font-size: 1rem;
+    color: var(--oxford);
+    letter-spacing: -0.01em;
+    text-align: center;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 120px;
+    justify-content: flex-end;
+}
+
+.doctor-badge {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.btn-logout {
+    background: transparent;
+    color: var(--oxford);
+    border: 2px solid var(--oxford-20);
+    padding: 0.3rem 0.875rem;
+    border-radius: var(--radius-btn);
+    font-size: 0.75rem;
+    font-weight: 600;
+    font-family: var(--font);
+    cursor: pointer;
+    transition: var(--transition);
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
+.btn-logout:hover {
+    border-color: var(--sky);
+    background: var(--sky-10);
+    color: var(--sky);
+}
+
+/* ============================================
+   BUTTONS
+   ============================================ */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem 1.25rem;
+    border-radius: var(--radius-btn);
+    font-size: 0.875rem;
+    font-weight: 700;
+    font-family: var(--font);
+    cursor: pointer;
+    transition: var(--transition);
+    letter-spacing: 0.02em;
+}
+
+.btn-primary {
+    background: transparent;
+    color: var(--oxford);
+    border: 2px solid var(--oxford);
+}
+
+.btn-primary:hover {
+    background: var(--sky-10);
+    border-color: var(--sky);
+    color: var(--sky);
+}
+
+.btn-primary:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+/* ============================================
+   FORMS
+   ============================================ */
+input,
+select {
+    width: 100%;
+    padding: 0.625rem 0.875rem;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+    font-family: var(--font);
+    background: var(--white);
+    color: var(--text);
+    transition: var(--transition);
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+input:focus,
+select:focus {
+    outline: none;
+    border-color: var(--sky);
+    box-shadow: 0 0 0 3px var(--sky-15);
+}
+
+label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin-bottom: 0.375rem;
+}
+
+.select-with-prefix {
+    display: flex;
+    align-items: center;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--white);
+    overflow: hidden;
+    transition: var(--transition);
+}
+
+.select-with-prefix:focus-within {
+    border-color: var(--sky);
+    box-shadow: 0 0 0 3px var(--sky-15);
+}
+
+.select-prefix {
+    padding: 0.625rem 0 0.625rem 0.875rem;
+    font-size: 0.875rem;
+    font-weight: 800;
+    color: var(--oxford);
+    white-space: nowrap;
+    font-family: var(--font);
+    user-select: none;
+}
+
+.select-with-prefix select {
+    border: none;
+    box-shadow: none;
+    background: transparent;
+    padding-left: 0.25rem;
+    border-radius: 0;
+}
+
+.select-with-prefix select:focus {
+    border: none;
+    box-shadow: none;
+    outline: none;
+}
+
+/* ============================================
+   MAIN CONTENT AREA
+   ============================================ */
+main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 1.25rem;
+}
+
+/* ============================================
+   TODAY CARD
+   ============================================ */
+.today-container {
+    margin-bottom: 1.5rem;
+}
+
+.today-cards {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.today-card {
+    flex: 1;
+    border-radius: var(--radius-card);
+    padding: 1.25rem 1.5rem;
+    overflow: hidden;
+}
+
+.today-card-primary {
+    background: var(--oxford);
+    color: var(--white);
+}
+
+.today-card-secondary {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+}
+
+.today-card-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.7;
+    margin-bottom: 0.375rem;
+}
+
+.today-card-primary .today-card-label {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.today-card-doctor {
+    font-size: 1.5rem;
+    font-weight: 900;
+    line-height: 1.2;
+    margin-bottom: 0.25rem;
+}
+
+.today-card-date {
+    font-size: 0.8125rem;
+    font-weight: 400;
+    opacity: 0.8;
+}
+
+.today-card-holiday {
+    display: inline-block;
+    background: #470A68;
+    color: var(--white);
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    font-size: 0.65rem;
+    font-weight: 600;
+    margin-top: 0.5rem;
+}
+
+.today-meta {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.today-fallback {
+    text-align: center;
+    padding: 2rem 1.5rem;
+    background: var(--card-bg);
+    border-radius: var(--radius-card);
+    border: 1px solid var(--border);
+    margin-bottom: 0.75rem;
+}
+
+.today-fallback-title {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--oxford);
+    margin-bottom: 0.25rem;
+}
+
+.today-fallback-subtitle {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+}
+
+/* ============================================
+   DOCTOR COLOR LEGEND
+   ============================================ */
+.doctor-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: center;
+    margin-bottom: 1.5rem;
+    padding: 0.75rem 1rem;
+    background: var(--card-bg);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+}
+
+.legend-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+/* ============================================
+   CALENDAR CONTAINER
+   ============================================ */
+#calendar-container {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 1.25rem;
+    overflow: hidden;
+}
+
+/* No calendar message */
+.no-schedule-message {
+    text-align: center;
+    padding: 3rem 1.5rem;
+    color: var(--text-muted);
+    font-size: 0.9375rem;
+}
+
+/* ============================================
+   FULLCALENDAR OVERRIDES
+   ============================================ */
+
+/* Strip default borders */
+.fc-theme-standard td,
+.fc-theme-standard th {
+    border: none;
+}
+.fc-theme-standard .fc-scrollgrid {
+    border: none;
+}
+
+/* Hide default toolbar */
+.fc .fc-header-toolbar {
+    display: none !important;
+}
+
+/* Day cell — no hover interaction (read-only) */
+.fc .fc-daygrid-day-frame {
+    margin: 2px;
+    border-radius: 10px;
+    position: relative;
+    min-height: 3.5rem;
+}
+
+/* Today — teal outline ring */
+.fc .fc-day-today {
+    background: transparent !important;
+}
+
+.fc .fc-day-today .fc-daygrid-day-frame {
+    outline: 2px solid var(--sky);
+    outline-offset: -2px;
+    background: var(--sky-10);
+}
+
+/* Month title */
+.fc .fc-multimonth-title {
+    font-size: 0.75rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 0.625rem 1rem;
+    background: var(--oxford);
+    color: var(--white);
+}
+
+/* Month card */
+.fc .fc-multimonth-month {
+    border: 1px solid var(--border);
+    border-radius: 0 20px 0 20px;
+    margin-bottom: 1rem;
+    overflow: hidden;
+    background: var(--white);
+    /* Performance: skip layout/paint for off-screen months */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 500px;
+}
+
+/* Day number */
+.fc .fc-multimonth .fc-daygrid-day-number {
+    font-size: 0.78rem;
+    font-weight: 500;
+    padding: 2px 5px;
+    color: var(--text);
+}
+
+/* Day-of-week header */
+.fc .fc-multimonth .fc-col-header-cell {
+    background: var(--oxford-06);
+    border-bottom: 2px solid var(--oxford-10) !important;
+}
+
+.fc .fc-multimonth .fc-col-header-cell-cushion {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    padding: 0.4rem 0.25rem;
+}
+
+/* Cell height */
+.fc .fc-multimonth .fc-daygrid-day-frame {
+    min-height: 3.5rem;
+    height: auto;
+}
+
+.fc .fc-multimonth .fc-daygrid-body-natural .fc-daygrid-day-events {
+    margin-bottom: 0;
+}
+
+.fc .fc-multimonth .fc-daygrid-day-top {
+    flex-direction: row;
+}
+
+/* Hide "+N more" */
+.fc .fc-daygrid-more-link {
+    display: none !important;
+}
+
+/* Hide disabled placeholder cells */
+.fc .fc-day-disabled {
+    visibility: hidden;
+}
+
+/* Collapse rows where ALL cells are disabled */
+.fc .fc-daygrid-body tr:not(:has(.fc-day:not(.fc-day-disabled))) {
+    display: none;
+}
+
+/* ============================================
+   CELL CONTENT (injected via dayCellDidMount)
+   ============================================ */
+
+/* Today's day number — bold teal */
+.fc .fc-day-today .fc-daygrid-day-number {
+    font-weight: 800;
+    color: var(--sky);
+}
+
+/* Doctor name pill inside calendar cells */
+.doctor-name-pill {
+    background: color-mix(in srgb, var(--doc-color, #6B7280) 10%, transparent);
+    color: var(--doc-color, #6B7280);
+    border-left: 2px solid var(--doc-color, #6B7280);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 0.55rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+    margin-top: 1px;
+}
+
+/* Clinic doctor pill — slightly different styling */
+.clinic-doctor-pill {
+    background: color-mix(in srgb, var(--doc-color, #6B7280) 6%, transparent);
+    color: var(--doc-color, #6B7280);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 0.5rem;
+    font-weight: 500;
+    font-style: italic;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.3;
+    margin-top: 1px;
+}
+
+/* Holiday pill inside calendar cells */
+.holiday-pill {
+    display: block;
+    background: #470A68;
+    color: var(--white);
+    padding: 1px 5px;
+    border-radius: 8px;
+    font-size: 0.5rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.3;
+    pointer-events: none;
+    margin-top: 1px;
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+@media (max-width: 768px) {
+    header {
+        padding: 0.75rem 1rem;
+    }
+
+    header h1 {
+        font-size: 0.875rem;
+    }
+
+    .header-left,
+    .header-right { width: auto; }
+
+    main {
+        padding: 0.75rem;
+    }
+
+    .today-cards {
+        flex-direction: column;
+    }
+
+    .today-card-doctor {
+        font-size: 1.25rem;
+    }
+
+    #calendar-container {
+        padding: 0.75rem;
+    }
+
+    .fc .fc-col-header-cell-cushion {
+        font-size: 0.6rem;
+    }
+
+    .cell-day-num {
+        font-size: 0.72rem;
+        padding: 2px;
+    }
+
+    .doctor-name-pill {
+        font-size: 0.5rem;
+    }
+
+    .clinic-doctor-pill {
+        font-size: 0.45rem;
+    }
+
+    .doctor-legend {
+        gap: 0.375rem;
+        padding: 0.5rem 0.75rem;
+    }
+
+    .legend-chip {
+        font-size: 0.65rem;
+    }
+}

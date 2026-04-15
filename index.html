@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WFP On-Call Schedule</title>
+    <meta name="theme-color" content="#003B4A">
+
+    <!-- Typography — Outfit 300/400/600/700/900 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800;900&display=swap" rel="stylesheet">
+
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
+
+    <!-- FullCalendar -->
+    <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+
+    <!-- Firebase init (with mock fallback) -->
+    <script type="module">
+        import { initDb } from "./js/firebase-init.js?v=1";
+        window._dbReady = initDb().then(db => { window.db = db; return db; });
+    </script>
+
+    <!-- PWA -->
+    <link rel="manifest" href="manifest.json">
+
+    <!-- App styles -->
+    <link rel="stylesheet" href="css/styles.css?v=1">
+
+    <!-- Service Worker registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/service-worker.js')
+                    .then(reg => console.log('[SW] Registered:', reg.scope))
+                    .catch(err => console.warn('[SW] Registration failed:', err));
+            });
+        }
+    </script>
+</head>
+<body x-data="app()">
+
+    <!-- Mock mode warning -->
+    <div x-show="mockMode" x-cloak class="mock-warning-banner">
+        &#9888; Demo Mode — Not connected to Firebase. Showing sample schedule data.
+    </div>
+
+    <!-- ===================== LOGIN VIEW ===================== -->
+    <div x-show="!authenticated" x-cloak>
+        <div id="login-wrap">
+            <div id="login-container">
+
+                <!-- Dark navy header -->
+                <div class="login-header">
+                    <h1><span class="heading-bold">Wheaton</span> <span class="heading-light">Family Practice</span></h1>
+                    <h2><span class="heading-bold">On-Call</span> <span class="heading-light">Schedule</span></h2>
+                </div>
+
+                <!-- Duly accent divider -->
+                <div class="duly-divider">
+                    <div class="duly-divider-navy"></div>
+                    <div class="duly-divider-teal"></div>
+                </div>
+
+                <!-- Form body -->
+                <div class="login-body">
+                    <form @submit.prevent="login" class="login-form">
+                        <div class="form-group">
+                            <label for="doctor-select">Physician</label>
+                            <div class="select-with-prefix">
+                                <span class="select-prefix">Dr.</span>
+                                <select id="doctor-select" x-model="doctorName" required>
+                                    <option value="" disabled>Select your name</option>
+                                    <template x-for="doc in doctors" :key="doc.name">
+                                        <option :value="doc.name" x-text="doc.name"></option>
+                                    </template>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="password-input">Password</label>
+                            <div class="password-wrapper">
+                                <input
+                                    id="password-input"
+                                    :type="showPassword ? 'text' : 'password'"
+                                    x-model="password"
+                                    placeholder="Enter practice password"
+                                    required
+                                >
+                                <button type="button" class="btn-peek" @click="showPassword = !showPassword" tabindex="-1" title="Toggle password visibility">
+                                    <span x-show="!showPassword">&#128065;</span>
+                                    <span x-show="showPassword" x-cloak>&#128065;&#8205;&#128488;</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div x-show="loginError" class="error-message" x-text="loginError" x-cloak></div>
+
+                        <button type="submit" class="btn btn-primary btn-full" :disabled="loginLoading">
+                            <span x-show="!loginLoading">Sign In</span>
+                            <span x-show="loginLoading" x-cloak>Signing in&hellip;</span>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== MAIN APP VIEW ===================== -->
+    <div x-show="authenticated" x-cloak>
+
+        <!-- Sticky header -->
+        <header>
+            <div class="header-left"></div>
+            <h1><span class="heading-bold">Wheaton</span> <span class="heading-light">Family Practice</span></h1>
+            <div class="header-right">
+                <span class="doctor-badge" x-text="'Dr. ' + doctorName"></span>
+                <button class="btn btn-logout" @click="logout">Sign Out</button>
+            </div>
+        </header>
+
+        <!-- Duly accent divider -->
+        <div class="duly-divider">
+            <div class="duly-divider-navy"></div>
+            <div class="duly-divider-teal"></div>
+        </div>
+
+        <main>
+            <!-- ========== TODAY CARD ========== -->
+            <div class="today-container">
+
+                <!-- Normal today card (when today is in schedule range) -->
+                <template x-if="todayData && !todayOutOfRange">
+                    <div>
+                        <div class="today-cards">
+                            <!-- Primary: On Call Tonight -->
+                            <div class="today-card today-card-primary">
+                                <div class="today-card-label">On Call Tonight</div>
+                                <div class="today-card-doctor" x-text="'Dr. ' + todayData.callDoctor"></div>
+                                <div class="today-card-date" x-text="todayDisplay"></div>
+                                <div x-show="todayData.holiday" class="today-card-holiday" x-text="todayData.holiday"></div>
+                            </div>
+
+                            <!-- Secondary: Clinic Saturday (only show if there's a clinic doctor) -->
+                            <template x-if="clinicSaturdayText && clinicSaturdayText !== 'Closed'">
+                                <div class="today-card today-card-secondary">
+                                    <div class="today-card-label">Clinic Saturday</div>
+                                    <div class="today-card-doctor" style="color: var(--oxford);" x-text="'Dr. ' + clinicSaturdayText"></div>
+                                    <div class="today-card-date" x-text="formatDate(clinicSaturdayDate)"></div>
+                                </div>
+                            </template>
+                        </div>
+
+                        <div class="today-meta" x-show="lastUpdated">
+                            Last updated: <span x-text="lastUpdated"></span>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- Fallback: today outside schedule range -->
+                <template x-if="scheduleMeta && (todayOutOfRange || !todayData)">
+                    <div class="today-fallback">
+                        <div class="today-fallback-title" x-text="scheduleMeta.startDate > (mockMode ? '2026-07-08' : '') ? 'Schedule starts ' + formatDate(scheduleMeta.startDate) : 'No on-call data for today'"></div>
+                        <div class="today-fallback-subtitle" x-text="'Published schedule: ' + formatDate(scheduleMeta.startDate) + ' \u2013 ' + formatDate(scheduleMeta.endDate)"></div>
+                        <div class="today-meta" x-show="lastUpdated" style="margin-top: 0.5rem;">
+                            Last updated: <span x-text="lastUpdated"></span>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- Fallback: no schedule published at all -->
+                <template x-if="!scheduleMeta">
+                    <div class="today-fallback">
+                        <div class="today-fallback-title">No Schedule Published</div>
+                        <div class="today-fallback-subtitle">The on-call schedule has not been published yet.</div>
+                    </div>
+                </template>
+            </div>
+
+            <!-- ========== DOCTOR COLOR LEGEND ========== -->
+            <div class="doctor-legend" x-show="legendDoctors.length > 0">
+                <template x-for="doc in legendDoctors" :key="doc.name">
+                    <div class="legend-chip">
+                        <span class="legend-dot" :style="`background: ${doc.color};`"></span>
+                        <span x-text="doc.name"></span>
+                    </div>
+                </template>
+            </div>
+
+            <!-- ========== CALENDAR ========== -->
+            <div id="calendar-container">
+                <!-- Calendar element -->
+                <div id="calendar-el"></div>
+
+                <!-- No calendar fallback -->
+                <div class="no-schedule-message"
+                     x-show="scheduleMeta && scheduleMeta.endDate < (mockMode ? '2026-07-01' : '')"
+                     x-cloak>
+                    The published schedule has expired. A new schedule will appear here when published.
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- App logic -->
+    <script src="js/app.js?v=1"></script>
+</body>
+</html>
