@@ -260,11 +260,27 @@ function app() {
             return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         },
 
+        /** Today's ISO date string, timezone-aware */
+        get todayISO() {
+            return this.mockMode ? "2026-07-08" : getClinicToday();
+        },
+
         /** Whether today is outside the published schedule range */
         get todayOutOfRange() {
             if (!this.scheduleMeta) return true;
-            const todayISO = this.mockMode ? "2026-07-08" : getClinicToday();
-            return todayISO < this.scheduleMeta.startDate || todayISO > this.scheduleMeta.endDate;
+            return this.todayISO < this.scheduleMeta.startDate || this.todayISO > this.scheduleMeta.endDate;
+        },
+
+        /** Whether the published schedule has expired (endDate is in the past) */
+        get scheduleExpired() {
+            if (!this.scheduleMeta) return false;
+            return this.scheduleMeta.endDate < this.todayISO;
+        },
+
+        /** Whether the schedule hasn't started yet (startDate is in the future) */
+        get scheduleNotStarted() {
+            if (!this.scheduleMeta) return false;
+            return this.scheduleMeta.startDate > this.todayISO;
         },
 
         /** Clinic doctor text for the next Saturday */

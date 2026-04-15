@@ -164,7 +164,7 @@
                 <!-- Fallback: today outside schedule range -->
                 <template x-if="scheduleMeta && (todayOutOfRange || !todayData)">
                     <div class="today-fallback">
-                        <div class="today-fallback-title" x-text="scheduleMeta.startDate > (mockMode ? '2026-07-08' : '') ? 'Schedule starts ' + formatDate(scheduleMeta.startDate) : 'No on-call data for today'"></div>
+                        <div class="today-fallback-title" x-text="scheduleNotStarted ? 'Schedule starts ' + formatDate(scheduleMeta.startDate) : 'No on-call data for today'"></div>
                         <div class="today-fallback-subtitle" x-text="'Published schedule: ' + formatDate(scheduleMeta.startDate) + ' \u2013 ' + formatDate(scheduleMeta.endDate)"></div>
                         <div class="today-meta" x-show="lastUpdated" style="margin-top: 0.5rem;">
                             Last updated: <span x-text="lastUpdated"></span>
@@ -198,7 +198,7 @@
 
                 <!-- No calendar fallback -->
                 <div class="no-schedule-message"
-                     x-show="scheduleMeta && scheduleMeta.endDate < (mockMode ? '2026-07-01' : '')"
+                     x-show="scheduleExpired"
                      x-cloak>
                     The published schedule has expired. A new schedule will appear here when published.
                 </div>

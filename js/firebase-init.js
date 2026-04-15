@@ -228,14 +228,40 @@ function createFirestoreDb(db, auth) {
 }
 
 async function initDb() {
+    // Step 1: Try to load firebase-config.js
+    let firebaseConfig = null;
     try {
         const configModule = await import("../firebase-config.js");
-        const firebaseConfig = configModule.default;
-
-        if (!firebaseConfig || !firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY") {
+        firebaseConfig = configModule.default;
+    } catch (e) {
+        // Config file missing or failed to load.
+        // If we've previously connected to Firebase (flag in sessionStorage),
+        // this is likely an offline/timing issue — don't fall back to mock.
+        if (sessionStorage.getItem('schedule_viewer_firebase')) {
+            console.warn("[Schedule] firebase-config.js failed to load but Firebase was previously active. Retrying...");
+            // Wait for service worker to serve from cache, then retry once
+            await new Promise(r => setTimeout(r, 500));
+            try {
+                const retryModule = await import("../firebase-config.js");
+                firebaseConfig = retryModule.default;
+            } catch (e2) {
+                console.error("[Schedule] Retry failed — falling back to mock mode:", e2);
+                return createMockDb();
+            }
+        } else {
+            // Never connected before — genuinely missing config, use mock
+            console.warn("[Schedule] firebase-config.js not found — running in mock mode");
             return createMockDb();
         }
+    }
 
+    // Step 2: Validate config
+    if (!firebaseConfig || !firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY") {
+        return createMockDb();
+    }
+
+    // Step 3: Initialize Firebase
+    try {
         const { initializeApp } = await import("https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js");
         const { initializeFirestore, persistentLocalCache } = await import("https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js");
         const { getAuth } = await import("https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js");
@@ -245,6 +271,7 @@ async function initDb() {
             localCache: persistentLocalCache()
         });
         const auth = getAuth(app);
+        sessionStorage.setItem('schedule_viewer_firebase', '1');
         console.log("[Schedule] Connected to Firebase");
         return createFirestoreDb(db, auth);
     } catch (e) {
