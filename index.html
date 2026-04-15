@@ -20,7 +20,7 @@
 
     <!-- Firebase init (with mock fallback) -->
     <script type="module">
-        import { initDb } from "./js/firebase-init.js?v=1";
+        import { initDb } from "./js/firebase-init.js?v=2";
         window._dbReady = initDb().then(db => { window.db = db; return db; });
     </script>
 
@@ -28,7 +28,7 @@
     <link rel="manifest" href="manifest.json">
 
     <!-- App styles -->
-    <link rel="stylesheet" href="css/styles.css?v=1">
+    <link rel="stylesheet" href="css/styles.css?v=2">
 
     <!-- Service Worker registration -->
     <script>
@@ -145,12 +145,21 @@
                                 <div x-show="todayData.holiday" class="today-card-holiday" x-text="todayData.holiday"></div>
                             </div>
 
-                            <!-- Secondary: Clinic Saturday (only show if there's a clinic doctor) -->
+                            <!-- Secondary: Saturday card (clinic + on-call) -->
                             <template x-if="clinicSaturdayText && clinicSaturdayText !== 'Closed'">
                                 <div class="today-card today-card-secondary">
-                                    <div class="today-card-label">Clinic Saturday</div>
-                                    <div class="today-card-doctor" style="color: var(--oxford);" x-text="'Dr. ' + clinicSaturdayText"></div>
-                                    <div class="today-card-date" x-text="formatDate(clinicSaturdayDate)"></div>
+                                    <div class="today-card-label">Saturday</div>
+                                    <div class="saturday-split">
+                                        <div class="saturday-side saturday-left">
+                                            <div class="saturday-role">Clinic</div>
+                                            <div class="saturday-doctor" x-text="'Dr. ' + clinicSaturdayText"></div>
+                                        </div>
+                                        <div class="saturday-side saturday-right">
+                                            <div class="saturday-role">On Call</div>
+                                            <div class="saturday-doctor" x-text="'Dr. ' + callSaturdayText"></div>
+                                        </div>
+                                    </div>
+                                    <div class="today-card-date" x-text="saturdayDisplay"></div>
                                 </div>
                             </template>
                         </div>
@@ -181,16 +190,6 @@
                 </template>
             </div>
 
-            <!-- ========== DOCTOR COLOR LEGEND ========== -->
-            <div class="doctor-legend" x-show="legendDoctors.length > 0">
-                <template x-for="doc in legendDoctors" :key="doc.name">
-                    <div class="legend-chip">
-                        <span class="legend-dot" :style="`background: ${doc.color};`"></span>
-                        <span x-text="doc.name"></span>
-                    </div>
-                </template>
-            </div>
-
             <!-- ========== CALENDAR ========== -->
             <div id="calendar-container">
                 <!-- Calendar element -->
@@ -207,6 +206,6 @@
     </div>
 
     <!-- App logic -->
-    <script src="js/app.js?v=1"></script>
+    <script src="js/app.js?v=2"></script>
 </body>
 </html>

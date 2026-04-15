@@ -296,6 +296,17 @@ function app() {
             return '';
         },
 
+        /** On-call doctor text for the next Saturday */
+        get callSaturdayText() {
+            if (this.todayData && this.todayData.day === 'Saturday') {
+                return this.todayData.callDoctor || '';
+            }
+            if (this.nextSaturdayData) {
+                return this.nextSaturdayData.callDoctor || '';
+            }
+            return '';
+        },
+
         get clinicSaturdayDate() {
             if (this.todayData && this.todayData.day === 'Saturday') {
                 return this.todayData.date;
@@ -304,6 +315,19 @@ function app() {
                 return this.nextSaturdayData.date;
             }
             return '';
+        },
+
+        /** Formatted Saturday date for display (same format as todayDisplay) */
+        get saturdayDisplay() {
+            const dateStr = this.clinicSaturdayDate;
+            if (!dateStr) return '';
+            const d = new Date(dateStr + 'T12:00:00');
+            return d.toLocaleDateString('en-US', {
+                weekday: 'long',
+                month: 'long',
+                day: 'numeric',
+                year: 'numeric',
+            });
         },
 
         // --- Calendar ---

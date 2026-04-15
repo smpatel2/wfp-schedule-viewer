@@ -231,7 +231,7 @@ async function initDb() {
     // Step 1: Try to load firebase-config.js
     let firebaseConfig = null;
     try {
-        const configModule = await import("../firebase-config.js");
+        const configModule = await import("../firebase-config.js?v=2");
         firebaseConfig = configModule.default;
     } catch (e) {
         // Config file missing or failed to load.
@@ -242,7 +242,7 @@ async function initDb() {
             // Wait for service worker to serve from cache, then retry once
             await new Promise(r => setTimeout(r, 500));
             try {
-                const retryModule = await import("../firebase-config.js");
+                const retryModule = await import("../firebase-config.js?v=2");
                 firebaseConfig = retryModule.default;
             } catch (e2) {
                 console.error("[Schedule] Retry failed — falling back to mock mode:", e2);

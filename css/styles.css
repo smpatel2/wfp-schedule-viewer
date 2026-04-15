@@ -405,6 +405,56 @@ main {
     color: var(--text);
 }
 
+/* Saturday split layout: clinic (left) | divider | on-call (right) */
+.saturday-split {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.25rem;
+    position: relative;
+}
+
+/* Centered vertical divider, ~2/3 height with gaps at top and bottom */
+.saturday-split::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 12.5%;
+    bottom: 12.5%;
+    width: 1px;
+    background: var(--oxford-20);
+    pointer-events: none;
+}
+
+.saturday-side {
+    flex: 1;
+    min-width: 0;
+}
+
+.saturday-left {
+    text-align: left;
+}
+
+.saturday-right {
+    text-align: right;
+}
+
+.saturday-role {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin-bottom: 0.125rem;
+}
+
+.saturday-doctor {
+    font-size: 1.25rem;
+    font-weight: 900;
+    line-height: 1.2;
+    color: var(--oxford);
+}
+
 .today-card-label {
     font-size: 0.7rem;
     font-weight: 700;
@@ -542,7 +592,7 @@ main {
     margin: 2px;
     border-radius: 10px;
     position: relative;
-    min-height: 3.5rem;
+    min-height: 4rem;
 }
 
 /* Today — teal outline ring */
@@ -604,7 +654,7 @@ main {
 
 /* Cell height */
 .fc .fc-multimonth .fc-daygrid-day-frame {
-    min-height: 3.5rem;
+    min-height: 4rem;
     height: auto;
 }
 
@@ -646,9 +696,9 @@ main {
     background: color-mix(in srgb, var(--doc-color, #6B7280) 10%, transparent);
     color: var(--doc-color, #6B7280);
     border-left: 2px solid var(--doc-color, #6B7280);
-    padding: 1px 5px;
-    border-radius: 4px;
-    font-size: 0.55rem;
+    padding: 2px 6px;
+    border-radius: 5px;
+    font-size: 0.65rem;
     font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
@@ -661,9 +711,9 @@ main {
 .clinic-doctor-pill {
     background: color-mix(in srgb, var(--doc-color, #6B7280) 6%, transparent);
     color: var(--doc-color, #6B7280);
-    padding: 1px 5px;
-    border-radius: 4px;
-    font-size: 0.5rem;
+    padding: 2px 6px;
+    border-radius: 5px;
+    font-size: 0.55rem;
     font-weight: 500;
     font-style: italic;
     white-space: nowrap;
@@ -731,11 +781,11 @@ main {
     }
 
     .doctor-name-pill {
-        font-size: 0.5rem;
+        font-size: 0.55rem;
     }
 
     .clinic-doctor-pill {
-        font-size: 0.45rem;
+        font-size: 0.5rem;
     }
 
     .doctor-legend {
