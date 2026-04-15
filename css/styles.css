@@ -527,6 +527,45 @@ main {
 /* ============================================
    CALENDAR CONTAINER
    ============================================ */
+/* --- Filter Toolbar --- */
+.filter-fab {
+    position: fixed;
+    right: 0.75rem;
+    bottom: 1.5rem;
+    z-index: 100;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 1rem;
+    border-radius: var(--radius-pill);
+    border: 2px solid var(--oxford-20);
+    background: var(--white);
+    color: var(--oxford);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    font-family: var(--font);
+    cursor: pointer;
+    transition: var(--transition);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.filter-fab:hover {
+    border-color: var(--oxford);
+}
+
+.filter-fab.active {
+    background: var(--oxford);
+    color: var(--white);
+    border-color: var(--oxford);
+}
+
+/* Filtered cells — hide other doctors' pills */
+.fc-day-filtered .doctor-name-pill,
+.fc-day-filtered .clinic-doctor-pill,
+.fc-day-filtered .holiday-pill {
+    display: none;
+}
+
 #calendar-container {
     background: var(--card-bg);
     border: 1px solid var(--border);

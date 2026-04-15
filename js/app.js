@@ -79,6 +79,9 @@ function app() {
         // --- Doctor Colors ---
         doctorClassMap: {},
 
+        // --- Filter ---
+        myCallsFilter: false,
+
         // --- Config ---
         mockMode: false,
 
@@ -128,6 +131,7 @@ function app() {
                     alpine.nextSaturdayData = null;
                     alpine.scheduleData = {};
                     alpine.cellHtmlCache = {};
+                    alpine.myCallsFilter = false;
                     sessionStorage.removeItem('schedule_viewer_doctor');
                 }
             });
@@ -219,6 +223,30 @@ function app() {
             this.nextSaturdayData = null;
             this.scheduleData = {};
             this.cellHtmlCache = {};
+            this.myCallsFilter = false;
+        },
+
+        // --- My Calls Filter ---
+        toggleMyCallsFilter() {
+            this.myCallsFilter = !this.myCallsFilter;
+            this.applyFilter();
+        },
+
+        applyFilter() {
+            const cells = document.querySelectorAll('.fc-daygrid-day');
+            cells.forEach(cell => {
+                const dateStr = cell.dataset.date;
+                if (!dateStr || !this.myCallsFilter) {
+                    cell.classList.remove('fc-day-filtered');
+                    return;
+                }
+                const entry = this.scheduleData[dateStr];
+                const isMyDay = entry && (
+                    entry.callDoctor === this.doctorName ||
+                    entry.clinicDoctor === this.doctorName
+                );
+                cell.classList.toggle('fc-day-filtered', !isMyDay);
+            });
         },
 
         // --- Today Card ---
@@ -442,6 +470,18 @@ function app() {
                                           arg.el.querySelector('.fc-daygrid-day-frame');
                         if (container) {
                             container.insertAdjacentHTML('beforeend', cached);
+                        }
+                    }
+
+                    // Apply filter state to newly mounted cells
+                    if (alpine.myCallsFilter) {
+                        const entry = alpine.scheduleData[dateStr];
+                        const isMyDay = entry && (
+                            entry.callDoctor === alpine.doctorName ||
+                            entry.clinicDoctor === alpine.doctorName
+                        );
+                        if (!isMyDay) {
+                            arg.el.classList.add('fc-day-filtered');
                         }
                     }
                 },
