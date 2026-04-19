@@ -886,8 +886,8 @@ main {
 
     /* Calendar pills — tighter on phones */
     .doctor-name-pill {
-        font-size: 0.675rem;
-        padding: 1px 3px;
+        font-size: 0.65rem;
+        padding: 1px 2px;
         border-left-width: 1.5px;
     }
 
