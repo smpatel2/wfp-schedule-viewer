@@ -49,6 +49,36 @@
         &#9888; Demo Mode — Not connected to Firebase. Showing sample schedule data.
     </div>
 
+    <!-- iOS install hint (shown once, dismissable, iOS Safari only, not already installed) -->
+    <div id="ios-install-banner" hidden>
+        <span class="ios-install-text">
+            Install this app: tap
+            <span class="ios-install-share" aria-label="Share">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+                    <path d="M12 2.5l4 4-1.4 1.4L13 6.3V15h-2V6.3L9.4 7.9 8 6.5l4-4zM5 12h3v2H7v6h10v-6h-1v-2h3v10H5V12z"/>
+                </svg>
+            </span>
+            then <strong>Add to Home Screen</strong>
+        </span>
+        <button id="ios-install-dismiss" aria-label="Dismiss">&times;</button>
+    </div>
+    <script>
+        (function() {
+            var ua = window.navigator.userAgent;
+            var isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+            var isStandalone = window.navigator.standalone === true ||
+                window.matchMedia('(display-mode: standalone)').matches;
+            var dismissed = localStorage.getItem('schedule_viewer_install_dismissed') === '1';
+            if (!isIOS || isStandalone || dismissed) return;
+            var banner = document.getElementById('ios-install-banner');
+            banner.hidden = false;
+            document.getElementById('ios-install-dismiss').addEventListener('click', function() {
+                localStorage.setItem('schedule_viewer_install_dismissed', '1');
+                banner.hidden = true;
+            });
+        })();
+    </script>
+
     <!-- ===================== LOGIN VIEW ===================== -->
     <div x-show="!authenticated" x-cloak>
         <div id="login-wrap">
