@@ -19,6 +19,7 @@ const MOCK_DOCTORS = [
     { name: "Rikert",   email: "rikert@mock.dev",    order: 9 },
 ];
 
+const MOCK_ADMIN_EMAIL = 'admin@mock.dev';
 const MOCK_PASSWORD = "test";
 
 /**
@@ -33,7 +34,7 @@ function generateMockSchedule() {
         "2026-07-04": "Independence Day",
     };
 
-    const schedule = [];
+    const schedule = {};
     const start = new Date(2026, 6, 1); // July 1, 2026
     const end = new Date(2026, 6, 31);  // July 31, 2026
 
@@ -57,13 +58,13 @@ function generateMockSchedule() {
             ? doctors[clinicIdx % doctors.length]
             : (isSunday || holiday ? "Closed" : "");
 
-        schedule.push({
+        schedule[dateISO] = {
             date: dateISO,
             day: dayName,
             holiday: holiday,
             callDoctor: callDoctor,
             clinicDoctor: clinicDoctor,
-        });
+        };
 
         // Advance call rotation (skip weekends for variety)
         if (!isSaturday && !isSunday) {
@@ -79,19 +80,21 @@ function generateMockSchedule() {
     return schedule;
 }
 
-const MOCK_SCHEDULE = generateMockSchedule();
-
-const MOCK_SCHEDULE_META = {
-    startDate: "2026-07-01",
-    endDate: "2026-07-31",
-    publishedAt: new Date("2026-06-28T10:00:00"),
-};
-
 function createMockDb() {
     console.warn("[Schedule] Firebase not configured — running in mock mode");
 
     let _mockUser = null;
     let _authCallbacks = [];
+
+    // Mutable schedule map and meta — so applyCallSwap can mutate them and
+    // fire the meta listener, keeping the preview flow identical to production.
+    let _schedule = generateMockSchedule();
+    let _scheduleMeta = {
+        startDate: "2026-07-01",
+        endDate: "2026-07-31",
+        publishedAt: new Date("2026-06-28T10:00:00"),
+    };
+    const _metaCallbacks = new Set();
 
     function _notifyAuth() {
         _authCallbacks.forEach(cb => cb(_mockUser));
@@ -102,6 +105,13 @@ function createMockDb() {
 
         // --- Auth ---
         async signIn(email, password) {
+            // Accept admin mock account
+            if (email === MOCK_ADMIN_EMAIL) {
+                if (password !== MOCK_PASSWORD) throw { code: 'auth/invalid-credential', message: 'Wrong password' };
+                _mockUser = { email };
+                _notifyAuth();
+                return;
+            }
             const doctor = MOCK_DOCTORS.find(d => d.email === email);
             if (!doctor) throw { code: 'auth/user-not-found', message: 'User not found' };
             if (password !== MOCK_PASSWORD) throw { code: 'auth/invalid-credential', message: 'Wrong password' };
@@ -128,22 +138,96 @@ function createMockDb() {
             callback(null);
         },
 
+        // --- Admin ---
+        // In mock mode any email containing "admin" is treated as admin,
+        // so preview works without seeding a real /admins doc.
+        async isAdmin(email) {
+            if (!email) return false;
+            return email.toLowerCase().includes('admin');
+        },
+
+        // --- Live Listener ---
+        // Fires callback with current meta immediately (mirrors onSnapshot's
+        // first emission), then again whenever applyCallSwap commits a swap.
+        // Returns an unsubscribe function.
+        onScheduleMetaChange(callback) {
+            _metaCallbacks.add(callback);
+            // Fire immediately so the UI hydrates last-updated on mount
+            setTimeout(() => callback({ ..._scheduleMeta }), 0);
+            return () => _metaCallbacks.delete(callback);
+        },
+
+        // --- Swap ---
+        async applyCallSwap(swap) {
+            // Cheap preconditions (identical to production implementation)
+            if (!swap.doctorA || !swap.doctorB)
+                throw new Error('Both sides of the swap must have an assigned doctor.');
+            if (swap.doctorA === swap.doctorB)
+                throw new Error('Cannot swap a doctor with themselves.');
+            const CLOSED_VALUES = ['', 'Closed'];
+            if (CLOSED_VALUES.includes(swap.doctorA) || CLOSED_VALUES.includes(swap.doctorB))
+                throw new Error('Cannot swap a day that is closed or has no assigned doctor.');
+            if (!swap.datesA?.length || !swap.datesB?.length)
+                throw new Error('Both sides of the swap must have at least one date.');
+            if (swap.datesA.length !== swap.datesB.length)
+                throw new Error('Both sides of the swap must cover the same number of days.');
+            const allDates = [...swap.datesA, ...swap.datesB];
+            if (new Set(allDates).size !== allDates.length)
+                throw new Error('Swap selections overlap — the same date cannot appear on both sides.');
+
+            const field = swap.shiftType === 'saturday-clinic' ? 'clinicDoctor' : 'callDoctor';
+
+            // Verify entries exist and match expected doctors (optimistic lock)
+            for (const d of allDates) {
+                if (!_schedule[d]) throw new Error(`No published schedule entry exists for ${d}.`);
+            }
+            for (let i = 0; i < swap.datesA.length; i++) {
+                const cur = _schedule[swap.datesA[i]][field];
+                if (cur !== swap.doctorA) throw new Error(
+                    `Schedule changed — ${swap.datesA[i]} now shows Dr. ${cur || '(none)'}, expected Dr. ${swap.doctorA}.`
+                );
+            }
+            for (let i = 0; i < swap.datesB.length; i++) {
+                const cur = _schedule[swap.datesB[i]][field];
+                if (cur !== swap.doctorB) throw new Error(
+                    `Schedule changed — ${swap.datesB[i]} now shows Dr. ${cur || '(none)'}, expected Dr. ${swap.doctorB}.`
+                );
+            }
+
+            // Apply
+            for (const d of swap.datesA) {
+                _schedule[d] = { ..._schedule[d], [field]: swap.doctorB };
+            }
+            for (const d of swap.datesB) {
+                _schedule[d] = { ..._schedule[d], [field]: swap.doctorA };
+            }
+
+            // Bump publishedAt by 1 second from its current value (not wall-clock new Date(),
+            // which can be earlier than the mock's initial future-dated publishedAt).
+            const prevMs = _scheduleMeta.publishedAt instanceof Date
+                ? _scheduleMeta.publishedAt.getTime()
+                : new Date(_scheduleMeta.publishedAt).getTime();
+            _scheduleMeta = { ..._scheduleMeta, publishedAt: new Date(prevMs + 1000) };
+            _metaCallbacks.forEach(cb => cb({ ..._scheduleMeta }));
+        },
+
         // --- Firestore ---
         async getDoctors() {
             return MOCK_DOCTORS.map(d => ({ name: d.name, email: d.email, order: d.order }));
         },
 
         async getScheduleMeta() {
-            return { ...MOCK_SCHEDULE_META };
+            return { ..._scheduleMeta };
         },
 
         async getTodaySchedule(dateISO) {
-            const entry = MOCK_SCHEDULE.find(s => s.date === dateISO);
-            return entry || null;
+            return _schedule[dateISO] ? { ..._schedule[dateISO] } : null;
         },
 
         async getScheduleRange(startDate, endDate) {
-            return MOCK_SCHEDULE.filter(s => s.date >= startDate && s.date <= endDate)
+            return Object.values(_schedule)
+                .filter(s => s.date >= startDate && s.date <= endDate)
+                .map(s => ({ ...s }))
                 .sort((a, b) => a.date.localeCompare(b.date));
         },
     };
@@ -184,6 +268,110 @@ function createFirestoreDb(db, auth) {
             import("https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js").then(({ onAuthStateChanged }) => {
                 onAuthStateChanged(auth, callback);
             });
+        },
+
+        // --- Admin ---
+        // Reads /admins/{email} doc — exists means admin.
+        // Each user can only read their own doc (per security rules).
+        async isAdmin(email) {
+            if (!email) return false;
+            try {
+                const { doc, getDoc } = await fs();
+                const snap = await getDoc(doc(db, 'admins', email.toLowerCase()));
+                return snap.exists();
+            } catch (e) {
+                // permission-denied means not admin (or not authenticated yet)
+                return false;
+            }
+        },
+
+        // --- Live Listener ---
+        // Returns an unsubscribe function. The import is async so we wrap the
+        // real unsub in a closure that can be called before the import resolves.
+        onScheduleMetaChange(callback) {
+            let realUnsub = null;
+            let cancelled = false;
+            fs().then(({ onSnapshot, doc: fsDoc }) => {
+                if (cancelled) return;
+                realUnsub = onSnapshot(fsDoc(db, 'scheduleMeta', 'current'), (snap) => {
+                    if (!snap.exists()) return;
+                    const data = snap.data();
+                    callback({
+                        ...data,
+                        publishedAt: data.publishedAt?.toDate?.() ?? null,
+                    });
+                });
+            });
+            return () => {
+                cancelled = true;
+                if (realUnsub) realUnsub();
+            };
+        },
+
+        // --- Swap ---
+        async applyCallSwap(swap) {
+            // Cheap preconditions (fail before any network call)
+            if (!swap.doctorA || !swap.doctorB)
+                throw new Error('Both sides of the swap must have an assigned doctor.');
+            if (swap.doctorA === swap.doctorB)
+                throw new Error('Cannot swap a doctor with themselves.');
+            const CLOSED_VALUES = ['', 'Closed'];
+            if (CLOSED_VALUES.includes(swap.doctorA) || CLOSED_VALUES.includes(swap.doctorB))
+                throw new Error('Cannot swap a day that is closed or has no assigned doctor.');
+            if (!swap.datesA?.length || !swap.datesB?.length)
+                throw new Error('Both sides of the swap must have at least one date.');
+            if (swap.datesA.length !== swap.datesB.length)
+                throw new Error('Both sides of the swap must cover the same number of days.');
+            const allDates = [...swap.datesA, ...swap.datesB];
+            if (new Set(allDates).size !== allDates.length)
+                throw new Error('Swap selections overlap — the same date cannot appear on both sides.');
+
+            const field = swap.shiftType === 'saturday-clinic' ? 'clinicDoctor' : 'callDoctor';
+            const { runTransaction, doc: fsDoc, serverTimestamp } = await fs();
+
+            try {
+                await runTransaction(db, async (tx) => {
+                    const refs = allDates.map(d => fsDoc(db, 'schedule', d));
+                    const snaps = await Promise.all(refs.map(r => tx.get(r)));
+
+                    snaps.forEach((snap, i) => {
+                        if (!snap.exists())
+                            throw new Error(`No published schedule entry exists for ${allDates[i]}.`);
+                    });
+
+                    // Optimistic lock: current Firestore state must still match
+                    // what the admin saw when they made their selection.
+                    swap.datesA.forEach((_, i) => {
+                        const cur = snaps[i].data()[field];
+                        if (cur !== swap.doctorA) throw new Error(
+                            `Schedule changed — ${swap.datesA[i]} now shows Dr. ${cur || '(none)'}, expected Dr. ${swap.doctorA}.`
+                        );
+                    });
+                    swap.datesB.forEach((_, i) => {
+                        const snap = snaps[swap.datesA.length + i];
+                        const cur = snap.data()[field];
+                        if (cur !== swap.doctorB) throw new Error(
+                            `Schedule changed — ${swap.datesB[i]} now shows Dr. ${cur || '(none)'}, expected Dr. ${swap.doctorB}.`
+                        );
+                    });
+
+                    swap.datesA.forEach(d =>
+                        tx.update(fsDoc(db, 'schedule', d), { [field]: swap.doctorB }));
+                    swap.datesB.forEach(d =>
+                        tx.update(fsDoc(db, 'schedule', d), { [field]: swap.doctorA }));
+
+                    // Bump publishedAt — triggers onScheduleMetaChange listener
+                    // in all open sessions so they auto-refresh.
+                    tx.update(fsDoc(db, 'scheduleMeta', 'current'), {
+                        publishedAt: serverTimestamp(),
+                    });
+                });
+            } catch (e) {
+                if (e.code === 'unavailable' || e.code === 'failed-precondition') {
+                    throw new Error('Connection lost — swap was not applied. Reconnect and try again.');
+                }
+                throw e;
+            }
         },
 
         // --- Firestore ---

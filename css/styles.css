@@ -252,7 +252,7 @@ header {
     z-index: 50;
 }
 
-.header-left { width: 120px; }
+.header-left { width: 100px; }
 
 header h1 {
     font-size: 1rem;
@@ -265,7 +265,7 @@ header h1 {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    width: 120px;
+    width: 100px;
     justify-content: flex-end;
 }
 
@@ -846,6 +846,343 @@ main {
     }
 }
 
+/* ============================================
+   ADMIN MODE
+   ============================================ */
+
+/* Admin banner — dark red, full-width strip above the header */
+.admin-banner {
+    background: #7f1d1d;
+    color: #fff;
+    padding: 0.5rem 1rem;
+    font-weight: 700;
+    font-size: 0.8125rem;
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: 60;
+}
+
+.admin-badge {
+    background: #dc2626;
+    color: #fff;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.admin-edit-indicator {
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: #fca5a5;
+}
+
+.admin-last-updated {
+    margin-left: auto;
+    font-weight: 400;
+    opacity: 0.85;
+    font-size: 0.75rem;
+}
+
+/* Red top border when edit mode is active */
+body.edit-mode {
+    border-top: 3px solid #dc2626;
+}
+
+/* Edit schedule toggle button — lives inside the admin banner */
+.btn-edit-schedule {
+    background: transparent;
+    color: rgba(255, 255, 255, 0.90);
+    border: 1.5px solid rgba(255, 255, 255, 0.40);
+    padding: 0.25rem 0.75rem;
+    border-radius: var(--radius-btn);
+    font-size: 0.75rem;
+    font-weight: 700;
+    font-family: var(--font);
+    cursor: pointer;
+    transition: var(--transition);
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.btn-edit-schedule:hover {
+    border-color: rgba(255, 255, 255, 0.80);
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+
+.btn-edit-schedule.active {
+    background: #fff;
+    color: #7f1d1d;
+    border-color: #fff;
+    font-weight: 800;
+}
+
+/* Secondary button style (used in confirm bar + modals) */
+.btn-secondary {
+    background: transparent;
+    color: var(--text-muted);
+    border: 2px solid var(--oxford-20);
+    padding: 0.5rem 1.25rem;
+    border-radius: var(--radius-btn);
+    font-size: 0.875rem;
+    font-weight: 700;
+    font-family: var(--font);
+    cursor: pointer;
+    transition: var(--transition);
+    letter-spacing: 0.02em;
+}
+
+.btn-secondary:hover {
+    border-color: var(--oxford);
+    color: var(--oxford);
+}
+
+/* Link-style button for the admin login toggle */
+.link-button {
+    background: none;
+    border: none;
+    padding: 0;
+    margin-bottom: 0.75rem;
+    font-size: 0.8125rem;
+    font-family: var(--font);
+    color: var(--sky);
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    display: block;
+    text-align: left;
+}
+
+.link-button:hover {
+    color: var(--oxford);
+}
+
+/* ============================================
+   SELECTED CELLS (edit mode)
+   ============================================ */
+
+/* First selection — teal outline + teal tint */
+.fc .fc-day-selected-a .fc-daygrid-day-frame {
+    outline: 2px solid var(--sky);
+    outline-offset: -2px;
+    background: rgba(0, 130, 152, 0.18) !important;
+}
+
+/* Second selection — amber/orange outline + amber tint */
+.fc .fc-day-selected-b .fc-daygrid-day-frame {
+    outline: 2px solid #D97706;
+    outline-offset: -2px;
+    background: rgba(217, 119, 6, 0.12) !important;
+}
+
+/* Pointer cursor on day cells in edit mode */
+body.edit-mode .fc-daygrid-day {
+    cursor: pointer;
+}
+
+/* ============================================
+   SWAP CONFIRM BAR
+   ============================================ */
+.swap-confirm-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 200;
+    background: var(--oxford);
+    color: var(--white);
+    padding: 0.875rem 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.25);
+}
+
+.swap-confirm-text {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.swap-confirm-text.swap-confirm-error {
+    color: #fca5a5;
+}
+
+.swap-confirm-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.swap-confirm-actions .btn-secondary {
+    color: rgba(255, 255, 255, 0.75);
+    border-color: rgba(255, 255, 255, 0.30);
+}
+
+.swap-confirm-actions .btn-secondary:hover {
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.70);
+}
+
+.swap-confirm-actions .btn-primary {
+    color: var(--oxford);
+    background: #fff;
+    border-color: #fff;
+}
+
+.swap-confirm-actions .btn-primary:hover {
+    background: #e0f2f7;
+    border-color: #e0f2f7;
+    color: var(--oxford);
+}
+
+.swap-confirm-actions .btn-primary:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* Prevent the FAB from overlapping the confirm bar */
+.swap-confirm-bar ~ .filter-fab,
+.filter-fab {
+    bottom: 1.5rem;
+    transition: bottom 0.2s var(--ease);
+}
+
+/* ============================================
+   DISAMBIGUATION MODAL
+   ============================================ */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 300;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+}
+
+.modal-card {
+    background: var(--white);
+    border-radius: var(--radius-card);
+    padding: 2rem;
+    width: 100%;
+    max-width: 380px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+}
+
+.modal-title {
+    font-size: 1.0625rem;
+    font-weight: 800;
+    color: var(--oxford);
+    margin-bottom: 0.625rem;
+}
+
+.modal-body {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin-bottom: 1.25rem;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 0.625rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.5rem;
+}
+
+.modal-actions .btn-secondary,
+.modal-actions .btn-primary {
+    flex: 1;
+    min-width: 0;
+    justify-content: center;
+    text-align: center;
+    font-size: 0.8125rem;
+    padding: 0.5rem 0.75rem;
+}
+
+.modal-cancel-link {
+    background: none;
+    border: none;
+    padding: 0.25rem 0;
+    font-size: 0.8125rem;
+    font-family: var(--font);
+    color: var(--text-muted);
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    display: block;
+    text-align: center;
+    width: 100%;
+    margin-top: 0.25rem;
+}
+
+.modal-cancel-link:hover {
+    color: var(--oxford);
+}
+
+/* ============================================
+   TOAST
+   ============================================ */
+.toast {
+    position: fixed;
+    bottom: 5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 400;
+    background: #1a2a30;
+    color: #fff;
+    padding: 0.625rem 1.25rem;
+    border-radius: var(--radius-pill);
+    font-size: 0.875rem;
+    font-weight: 600;
+    font-family: var(--font);
+    white-space: nowrap;
+    max-width: calc(100vw - 2rem);
+    text-align: center;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.30);
+    pointer-events: none;
+}
+
+/* ============================================
+   ADMIN EMPTY STATE
+   ============================================ */
+.admin-empty-state {
+    text-align: center;
+    padding: 3rem 1.5rem;
+    color: var(--text-muted);
+}
+
+.admin-empty-state h2 {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--oxford);
+    margin-bottom: 0.5rem;
+}
+
+.admin-empty-state p {
+    font-size: 0.875rem;
+    line-height: 1.5;
+    margin-bottom: 0.5rem;
+}
+
+.admin-empty-hint {
+    font-size: 0.8125rem;
+    font-style: italic;
+}
+
 /* --- Phone (≤480px) --- */
 @media (max-width: 480px) {
     header {
@@ -943,5 +1280,52 @@ main {
 
     .cell-day-num {
         font-size: 0.7rem;
+    }
+
+    /* Admin banner — tighter on phones */
+    .admin-banner {
+        font-size: 0.75rem;
+        padding: 0.4rem 0.75rem;
+        gap: 0.5rem;
+    }
+
+    .admin-last-updated {
+        margin-left: 0;
+        width: 100%;
+        font-size: 0.7rem;
+    }
+
+    /* Swap confirm bar — stack text above buttons on phones */
+    .swap-confirm-bar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.625rem;
+        padding: 0.75rem 1rem;
+    }
+
+    .swap-confirm-actions {
+        width: 100%;
+    }
+
+    .swap-confirm-actions .btn {
+        flex: 1;
+        min-height: 44px;
+    }
+
+    /* Toast higher above confirm bar on phones */
+    .toast {
+        bottom: 7.5rem;
+        white-space: normal;
+    }
+
+    /* Modal card — tighter padding on phones */
+    .modal-card {
+        padding: 1.5rem;
+    }
+
+    /* Edit schedule button — minimum touch target */
+    .btn-edit-schedule {
+        min-height: 44px;
+        padding: 0.5rem 1rem;
     }
 }

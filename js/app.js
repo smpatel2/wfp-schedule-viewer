@@ -54,6 +54,70 @@ function startOfMonth(dateISO) {
     return dateISO.substring(0, 8) + '01';
 }
 
+/** Add n days to a Date and return a new Date. */
+function addDays(date, n) {
+    const d = new Date(date);
+    d.setDate(d.getDate() + n);
+    return d;
+}
+
+/** Format a Date as YYYY-MM-DD in local time (matches scheduleData keys). */
+function toISO(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
+/**
+ * Thrown when a tapped calendar cell cannot participate in a swap —
+ * e.g. it's closed, unassigned, or has no published entry.
+ * The tap handler catches this and shows a toast; it never surfaces to the user
+ * as an unhandled rejection.
+ */
+class UnswappableTap extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'UnswappableTap';
+    }
+}
+
+/**
+ * Detect whether dateStr is part of a same-doctor Fri/Sat/Sun weekend block.
+ * Returns { dates: [isoFri, isoSat, isoSun], doctor } or null.
+ *
+ * Returns null (no block offered) when:
+ *  - The date is not a Fri/Sat/Sun
+ *  - Any of the three docs is missing from scheduleData
+ *  - The callDoctor across the three days doesn't match
+ *  - The Friday's callDoctor is empty/Closed (nothing to swap)
+ */
+function detectWeekendBlock(dateStr, scheduleData) {
+    const d = new Date(dateStr + 'T12:00:00');
+    const dow = d.getDay();               // 0=Sun..6=Sat
+    if (dow !== 5 && dow !== 6 && dow !== 0) return null;
+
+    // Find the Friday anchoring this block
+    const friday = new Date(d);
+    friday.setDate(d.getDate() - ((dow + 2) % 7));
+    const isoFri = toISO(friday);
+    const isoSat = toISO(addDays(friday, 1));
+    const isoSun = toISO(addDays(friday, 2));
+
+    const fri = scheduleData[isoFri];
+    const sat = scheduleData[isoSat];
+    const sun = scheduleData[isoSun];
+    if (!fri || !sat || !sun) return null;
+
+    const CLOSED_VALUES = ['', 'Closed'];
+    if (CLOSED_VALUES.includes(fri.callDoctor)) return null;
+
+    if (fri.callDoctor === sat.callDoctor && sat.callDoctor === sun.callDoctor) {
+        return { dates: [isoFri, isoSat, isoSun], doctor: fri.callDoctor };
+    }
+    return null;
+}
+
 function app() {
     return {
         // --- Auth State ---
@@ -65,6 +129,10 @@ function app() {
         showPassword: false,
         loginError: '',
         loginLoading: false,
+
+        // --- Admin Login Mode ---
+        adminLoginMode: false,
+        adminEmail: '',
 
         // --- Today Card ---
         todayData: null,
@@ -81,6 +149,28 @@ function app() {
 
         // --- Filter ---
         myCallsFilter: false,
+
+        // --- Admin Mode ---
+        adminMode: false,
+
+        // --- Edit Mode (admin only) ---
+        editMode: false,
+        swapSelection: { a: null, b: null }, // { shiftType, dates, doctor }
+        swapApplying: false,
+
+        // --- Disambiguation Modal ---
+        modalVisible: false,
+        modalType: null,          // 'clinic-or-call' | 'block-or-single'
+        modalBlockInfo: null,     // { dates, doctor } for block-or-single
+        _modalResolve: null,
+
+        // --- Toast ---
+        toastMessage: '',
+        toastVisible: false,
+        _toastTimer: null,
+
+        // --- Live Listener ---
+        _metaUnsub: null,
 
         // --- Config ---
         mockMode: false,
@@ -106,25 +196,13 @@ function app() {
             }
 
             const alpine = this;
-            window.db.onAuthChanged((user) => {
-                if (user) {
-                    const entry = alpine.doctors.find(d => d.email.toLowerCase() === user.email.toLowerCase());
-                    if (entry) {
-                        alpine.doctorName = entry.name;
-                        alpine.authenticated = true;
-                        sessionStorage.setItem('schedule_viewer_doctor', entry.name);
-                        // Load today card first, then defer calendar to next frame
-                        alpine.loadTodayData().then(() => {
-                            setTimeout(() => alpine.loadScheduleAndInitCalendar(), 0);
-                        });
-                    }
-                } else {
-                    // Clean up on logout / auth loss
-                    if (alpine.calendar) {
-                        alpine.calendar.destroy();
-                        alpine.calendar = null;
-                    }
+            window.db.onAuthChanged(async (user) => {
+                if (!user) {
+                    // Teardown live listener and edit state on sign-out
+                    if (alpine._metaUnsub) { alpine._metaUnsub(); alpine._metaUnsub = null; }
+                    if (alpine.calendar) { alpine.calendar.destroy(); alpine.calendar = null; }
                     alpine.authenticated = false;
+                    alpine.adminMode = false;
                     alpine.doctorName = '';
                     alpine.todayData = null;
                     alpine.scheduleMeta = null;
@@ -132,7 +210,36 @@ function app() {
                     alpine.scheduleData = {};
                     alpine.cellHtmlCache = {};
                     alpine.myCallsFilter = false;
+                    alpine.editMode = false;
+                    alpine.swapSelection = { a: null, b: null };
+                    document.body.classList.remove('edit-mode');
                     sessionStorage.removeItem('schedule_viewer_doctor');
+                    return;
+                }
+
+                const email = user.email.toLowerCase();
+                const doctorEntry = alpine.doctors.find(d => d.email.toLowerCase() === email);
+                const adminFlag = await window.db.isAdmin(email);
+
+                if (adminFlag && !doctorEntry) {
+                    // Admin-only account — no today cards, no My Calls, just edit calendar
+                    alpine.adminMode = true;
+                    alpine.doctorName = '';
+                    alpine.authenticated = true;
+                    await alpine.loadAdminView();
+                } else if (doctorEntry) {
+                    // Normal doctor account
+                    alpine.adminMode = false;
+                    alpine.doctorName = doctorEntry.name;
+                    alpine.authenticated = true;
+                    sessionStorage.setItem('schedule_viewer_doctor', doctorEntry.name);
+                    alpine.loadTodayData().then(() => {
+                        setTimeout(() => alpine.loadScheduleAndInitCalendar(), 0);
+                    });
+                } else {
+                    // Email not in /doctors and not in /admins — reject
+                    await window.db.signOut();
+                    alpine.loginError = 'Account not recognized. Contact the administrator.';
                 }
             });
         },
@@ -176,18 +283,27 @@ function app() {
             this.loginLoading = true;
 
             try {
-                if (!this.doctorName) {
-                    this.loginError = 'Please select your name.';
-                    return;
-                }
-                if (!this.password) {
-                    this.loginError = 'Please enter the practice password.';
-                    return;
+                let email;
+                if (this.adminLoginMode) {
+                    if (!this.adminEmail) {
+                        this.loginError = 'Please enter your administrator email.';
+                        return;
+                    }
+                    email = this.adminEmail.trim();
+                } else {
+                    if (!this.doctorName) {
+                        this.loginError = 'Please select your name.';
+                        return;
+                    }
+                    email = this.doctorEmailMap[this.doctorName];
+                    if (!email) {
+                        this.loginError = 'Doctor not found. Contact the administrator.';
+                        return;
+                    }
                 }
 
-                const email = this.doctorEmailMap[this.doctorName];
-                if (!email) {
-                    this.loginError = 'Doctor not found. Contact the administrator.';
+                if (!this.password) {
+                    this.loginError = 'Please enter the practice password.';
                     return;
                 }
 
@@ -212,6 +328,10 @@ function app() {
         },
 
         async logout() {
+            if (this._metaUnsub) { this._metaUnsub(); this._metaUnsub = null; }
+            this.editMode = false;
+            this.swapSelection = { a: null, b: null };
+            document.body.classList.remove('edit-mode');
             await window.db.signOut();
             this.password = '';
             if (this.calendar) {
@@ -313,11 +433,9 @@ function app() {
 
         /** Clinic doctor text for the next Saturday */
         get clinicSaturdayText() {
-            // If today is Saturday, use todayData
             if (this.todayData && this.todayData.day === 'Saturday') {
                 return this.todayData.clinicDoctor || '';
             }
-            // Otherwise use next Saturday data
             if (this.nextSaturdayData) {
                 return this.nextSaturdayData.clinicDoctor || '';
             }
@@ -345,7 +463,7 @@ function app() {
             return '';
         },
 
-        /** Formatted Saturday date for display (same format as todayDisplay) */
+        /** Formatted Saturday date for display */
         get saturdayDisplay() {
             const dateStr = this.clinicSaturdayDate;
             if (!dateStr) return '';
@@ -358,20 +476,46 @@ function app() {
             });
         },
 
-        // --- Calendar ---
+        // --- Range Helper (shared between doctor and admin views) ---
+        /**
+         * Returns { rangeStart, rangeEnd } for fetching schedule docs.
+         * Applies a weekend-block boundary fix: if the 1st of the current
+         * month is Sat or Sun, rewinds rangeStart by 1–2 days so that
+         * detectWeekendBlock() can see the full Fri/Sat/Sun triple for a
+         * block that straddles the month boundary.
+         */
+        _computeHydrateRange() {
+            const todayISO = this.mockMode ? "2026-07-01" : getClinicToday();
+            let calStart = startOfMonth(todayISO);
+
+            // If the 1st falls on Sat (6) or Sun (0), rewind to include the
+            // block's Friday so detectWeekendBlock gets all three docs.
+            const calStartDow = new Date(calStart + 'T12:00:00').getDay();
+            if (calStartDow === 6) {
+                calStart = toISO(addDays(new Date(calStart + 'T12:00:00'), -1));
+            } else if (calStartDow === 0) {
+                calStart = toISO(addDays(new Date(calStart + 'T12:00:00'), -2));
+            }
+
+            const rangeStart = calStart > this.scheduleMeta.startDate
+                ? calStart
+                : this.scheduleMeta.startDate;
+
+            return { rangeStart, rangeEnd: this.scheduleMeta.endDate };
+        },
+
+        // --- Calendar (Doctor View) ---
         async loadScheduleAndInitCalendar() {
             if (!this.scheduleMeta) return;
 
             const todayISO = this.mockMode ? "2026-07-01" : getClinicToday();
-            const calStart = startOfMonth(todayISO);
 
             // Don't init calendar if schedule is entirely in the past
             if (this.scheduleMeta.endDate < todayISO) {
                 return;
             }
 
-            const rangeStart = calStart > this.scheduleMeta.startDate ? calStart : this.scheduleMeta.startDate;
-            const rangeEnd = this.scheduleMeta.endDate;
+            const { rangeStart, rangeEnd } = this._computeHydrateRange();
 
             try {
                 const entries = await window.db.getScheduleRange(rangeStart, rangeEnd);
@@ -381,9 +525,104 @@ function app() {
                 }
                 this.buildCellHtmlCache();
                 await this.initCalendar();
+                this._attachMetaListener();
             } catch (e) {
                 console.error("[Schedule] Failed to load schedule data:", e);
             }
+        },
+
+        // --- Calendar (Admin View) ---
+        async loadAdminView() {
+            if (!window.db) await window._dbReady;
+            try {
+                this.scheduleMeta = await window.db.getScheduleMeta();
+                if (!this.scheduleMeta) {
+                    // No schedule yet — attach listener so the admin tab
+                    // auto-transitions when one is published.
+                    this._attachMetaListener();
+                    return;
+                }
+
+                const { rangeStart, rangeEnd } = this._computeHydrateRange();
+                const entries = await window.db.getScheduleRange(rangeStart, rangeEnd);
+                this.scheduleData = {};
+                for (const entry of entries) {
+                    this.scheduleData[entry.date] = entry;
+                }
+                this.buildCellHtmlCache();
+                await this.initCalendar();
+                this._attachMetaListener();
+            } catch (e) {
+                console.error('[Admin] loadAdminView failed:', e);
+            }
+        },
+
+        // --- Refresh (re-hydrate + rebuild, called by meta listener) ---
+        async refreshSchedule() {
+            if (!this.authenticated) return;
+            try {
+                this.scheduleMeta = await window.db.getScheduleMeta();
+                if (!this.scheduleMeta) return;
+
+                const { rangeStart, rangeEnd } = this._computeHydrateRange();
+                const entries = await window.db.getScheduleRange(rangeStart, rangeEnd);
+                this.scheduleData = {};
+                for (const entry of entries) {
+                    this.scheduleData[entry.date] = entry;
+                }
+                this.buildCellHtmlCache();
+
+                if (this.calendar) {
+                    this.calendar.destroy();
+                    this.calendar = null;
+                }
+                await this.initCalendar();
+
+                // Doctor mode also refreshes today card
+                if (!this.adminMode && this.doctorName) {
+                    await this.loadTodayData();
+                }
+            } catch (e) {
+                console.error('[Schedule] refreshSchedule failed:', e);
+            }
+        },
+
+        // --- Live Listener ---
+        /**
+         * Attach a Firestore onSnapshot listener on scheduleMeta/current.
+         * Calls refreshSchedule() when publishedAt advances.
+         * Guards against stale selections: clears swapSelection if edit mode
+         * is active when an external update arrives.
+         */
+        _attachMetaListener() {
+            if (this._metaUnsub) this._metaUnsub();
+            const alpine = this;
+
+            this._metaUnsub = window.db.onScheduleMetaChange((meta) => {
+                if (!meta.publishedAt) return;
+
+                // Case 1: admin on empty-state tab, schedule just published
+                if (!alpine.scheduleMeta) {
+                    alpine.refreshSchedule();
+                    return;
+                }
+
+                // Case 2: normal update — only act when incoming is newer
+                const current  = alpine.scheduleMeta.publishedAt?.getTime?.() ?? 0;
+                const incoming = meta.publishedAt instanceof Date
+                    ? meta.publishedAt.getTime()
+                    : new Date(meta.publishedAt).getTime();
+                if (incoming <= current) return;
+
+                // Clear any in-progress selection so stale highlights
+                // don't persist into the rebuilt calendar
+                if (alpine.editMode && alpine.swapSelection?.a) {
+                    alpine.showToast('Schedule updated — selection cleared.');
+                    alpine.clearSwapSelection();
+                }
+
+                alpine.refreshSchedule();
+            });
         },
 
         buildCellHtmlCache() {
@@ -473,7 +712,7 @@ function app() {
                         }
                     }
 
-                    // Apply filter state to newly mounted cells
+                    // Apply My Calls filter state to newly mounted cells
                     if (alpine.myCallsFilter) {
                         const entry = alpine.scheduleData[dateStr];
                         const isMyDay = entry && (
@@ -506,8 +745,301 @@ function app() {
                     el = el.previousElementSibling;
                 }
             }, 50);
+
+            // Bind edit-mode click handler using event delegation on the
+            // calendar container. Bound once; persists across calendar rebuilds
+            // because #calendar-el stays in the DOM when FullCalendar is
+            // destroyed and re-created.
+            const calEl = document.getElementById('calendar-el');
+            if (!calEl._editListenerBound) {
+                calEl._editListenerBound = true;
+                calEl.addEventListener('click', (e) => {
+                    if (!alpine.editMode) return;
+                    // Only act on clicks that land on a day cell
+                    const cell = e.target.closest('.fc-daygrid-day');
+                    if (!cell) return;
+                    const dateStr = cell.dataset.date;
+                    if (!dateStr) return;
+
+                    if (!alpine.swapSelection.a) {
+                        alpine.handleFirstTap(dateStr);
+                    } else if (!alpine.swapSelection.b) {
+                        alpine.handleSecondTap(dateStr);
+                    }
+                    // Both slots filled → wait for Apply or Cancel
+                });
+            }
         },
 
+        // ================================================================
+        // ADMIN: EDIT MODE
+        // ================================================================
+
+        toggleEditMode() {
+            this.editMode = !this.editMode;
+            document.body.classList.toggle('edit-mode', this.editMode);
+            if (!this.editMode) {
+                this.clearSwapSelection();
+            }
+        },
+
+        clearSwapSelection() {
+            document.querySelectorAll('.fc-day-selected-a, .fc-day-selected-b')
+                .forEach(el => {
+                    el.classList.remove('fc-day-selected-a', 'fc-day-selected-b');
+                });
+            this.swapSelection = { a: null, b: null };
+        },
+
+        _highlightShift(shift, cls) {
+            for (const dateStr of shift.dates) {
+                const cell = document.querySelector(`.fc-day[data-date="${dateStr}"]`);
+                if (cell) cell.classList.add(cls);
+            }
+        },
+
+        /** Human-readable label for a shift descriptor. */
+        _shiftLabel(shift) {
+            if (!shift) return '';
+            if (shift.dates.length === 1) {
+                const d = new Date(shift.dates[0] + 'T12:00:00');
+                const dateLabel = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                const typeLabel = shift.shiftType === 'saturday-clinic' ? 'Clinic' : 'Call';
+                return `Dr. ${shift.doctor} (${dateLabel} – ${typeLabel})`;
+            }
+            const start = new Date(shift.dates[0] + 'T12:00:00');
+            const end   = new Date(shift.dates[shift.dates.length - 1] + 'T12:00:00');
+            const startLabel = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            const endLabel   = end.toLocaleDateString('en-US',   { month: 'short', day: 'numeric' });
+            return `Dr. ${shift.doctor} (${startLabel}–${endLabel} – Weekend)`;
+        },
+
+        /** Dynamic text for the swap confirm bar. */
+        get swapConfirmText() {
+            const { a, b } = this.swapSelection;
+            if (!a) return '';
+            if (!b) return `Selected: ${this._shiftLabel(a)}. Tap another date to swap.`;
+            if (a.shiftType !== b.shiftType) {
+                const aT = a.shiftType === 'saturday-clinic' ? 'clinic' : 'call';
+                const bT = b.shiftType === 'saturday-clinic' ? 'clinic' : 'call';
+                return `Type mismatch: first is a ${aT} shift, second is a ${bT} shift. Cancel and try again.`;
+            }
+            return `Swap ${this._shiftLabel(a)} ↔ ${this._shiftLabel(b)}?`;
+        },
+
+        /** True when both shifts are selected but their types don't match. */
+        get swapTypeError() {
+            const { a, b } = this.swapSelection;
+            if (!a || !b) return false;
+            return a.shiftType !== b.shiftType;
+        },
+
+        /** Label for the weekend block in the disambiguation modal. */
+        get modalBlockLabel() {
+            if (!this.modalBlockInfo) return '';
+            const dates = this.modalBlockInfo.dates;
+            if (!dates || dates.length < 3) return '';
+            const fmt = d => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            return `${fmt(dates[0])} – ${fmt(dates[2])}`;
+        },
+
+        // ================================================================
+        // DISAMBIGUATION MODALS
+        // ================================================================
+
+        /** Shows the clinic-vs-call picker. Returns 'clinic'|'call'|null. */
+        askClinicOrCall() {
+            return new Promise(resolve => {
+                this.modalType = 'clinic-or-call';
+                this.modalBlockInfo = null;
+                this.modalVisible = true;
+                this._modalResolve = resolve;
+            });
+        },
+
+        /** Shows the block-vs-single picker. Returns 'block'|'single'|null. */
+        askBlockOrSingle(block) {
+            return new Promise(resolve => {
+                this.modalType = 'block-or-single';
+                this.modalBlockInfo = block;
+                this.modalVisible = true;
+                this._modalResolve = resolve;
+            });
+        },
+
+        /** Called by modal buttons. `choice` is the answer or null (cancel). */
+        dismissModal(choice) {
+            this.modalVisible = false;
+            const resolve = this._modalResolve;
+            this._modalResolve = null;
+            this.modalType = null;
+            this.modalBlockInfo = null;
+            if (resolve) resolve(choice);
+        },
+
+        // ================================================================
+        // SHIFT RESOLUTION
+        // ================================================================
+
+        /**
+         * Resolve a tapped date to a shift descriptor.
+         * Sequential logic per plan:
+         *   1. Saturday with both call+clinic → ask clinic vs call
+         *   2. Fri/Sat/Sun in a same-doctor block → ask block vs single
+         *   3. Auto-resolve remaining cases
+         *
+         * Returns { shiftType, dates, doctor } or null (user cancelled modal).
+         * Throws UnswappableTap for unswappable cells (caller shows toast).
+         */
+        async resolveTappedShift(dateStr) {
+            const entry = this.scheduleData[dateStr];
+            if (!entry) {
+                throw new UnswappableTap(
+                    `No published schedule entry for ${dateStr} — nothing to swap.`
+                );
+            }
+
+            const d = new Date(dateStr + 'T12:00:00');
+            const isSat = d.getDay() === 6;
+            const CLOSED = ['', 'Closed'];
+            const isClosed = v => !v || CLOSED.includes(v);
+
+            // Step 1: Saturday with BOTH call + clinic → ask clinic-vs-call first.
+            // Clinic pick short-circuits (never a weekend-block swap).
+            if (isSat && !isClosed(entry.clinicDoctor) && !isClosed(entry.callDoctor)) {
+                const pick = await this.askClinicOrCall();
+                if (pick === null) return null;
+                if (pick === 'clinic') {
+                    return { shiftType: 'saturday-clinic', dates: [dateStr], doctor: entry.clinicDoctor };
+                }
+                // pick === 'call' → fall through to weekend-block check
+            }
+
+            // Step 2: Fri/Sat/Sun inside a same-doctor block → ask block vs single.
+            const block = detectWeekendBlock(dateStr, this.scheduleData);
+            if (block) {
+                const pick = await this.askBlockOrSingle(block);
+                if (pick === null) return null;
+                if (pick === 'block') {
+                    return { shiftType: 'weekend-block', dates: block.dates, doctor: block.doctor };
+                }
+                // pick === 'single' → fall through to single-day resolution
+            }
+
+            // Step 3: Auto-resolve single-day shift.
+            if (isSat && isClosed(entry.callDoctor) && !isClosed(entry.clinicDoctor)) {
+                return { shiftType: 'saturday-clinic', dates: [dateStr], doctor: entry.clinicDoctor };
+            }
+
+            // Final guard: reject closed / unassigned call slots immediately
+            // so the admin never reaches Apply with a bad selection.
+            if (isClosed(entry.callDoctor)) {
+                const bothEmpty = isClosed(entry.clinicDoctor);
+                throw new UnswappableTap(
+                    bothEmpty
+                        ? `${dateStr} has no on-call or clinic assignment — nothing to swap.`
+                        : `${dateStr} has no on-call assignment (marked "${entry.callDoctor || 'empty'}"). Nothing to swap.`
+                );
+            }
+
+            return { shiftType: 'single-call', dates: [dateStr], doctor: entry.callDoctor };
+        },
+
+        // ================================================================
+        // TAP HANDLERS
+        // ================================================================
+
+        async handleFirstTap(dateStr) {
+            let shift;
+            try {
+                shift = await this.resolveTappedShift(dateStr);
+            } catch (e) {
+                if (e instanceof UnswappableTap) { this.showToast(e.message); return; }
+                throw e;
+            }
+            if (!shift) return; // user cancelled modal — do nothing
+
+            this.clearSwapSelection();
+            this.swapSelection = { a: shift, b: null };
+            this._highlightShift(shift, 'fc-day-selected-a');
+        },
+
+        async handleSecondTap(dateStr) {
+            // Reject re-tapping a date already in selection A
+            if (this.swapSelection.a && this.swapSelection.a.dates.includes(dateStr)) {
+                this.showToast('That date is already selected — tap a different date.');
+                return;
+            }
+
+            let shift;
+            try {
+                shift = await this.resolveTappedShift(dateStr);
+            } catch (e) {
+                if (e instanceof UnswappableTap) { this.showToast(e.message); return; }
+                throw e;
+            }
+            if (!shift) return;
+
+            // Reject shift-type mismatch immediately (show inline via swapConfirmText too)
+            if (shift.shiftType !== this.swapSelection.a.shiftType) {
+                const aT = this.swapSelection.a.shiftType === 'saturday-clinic' ? 'clinic' : 'call';
+                const bT = shift.shiftType === 'saturday-clinic' ? 'clinic' : 'call';
+                this.showToast(`Type mismatch: first is a ${aT} shift, this is a ${bT} shift.`);
+                return;
+            }
+
+            this.swapSelection = { a: this.swapSelection.a, b: shift };
+            this._highlightShift(shift, 'fc-day-selected-b');
+        },
+
+        // ================================================================
+        // APPLY SWAP
+        // ================================================================
+
+        buildSwapPayload() {
+            const { a, b } = this.swapSelection;
+            if (!a || !b) return null;
+            return {
+                shiftType: a.shiftType,
+                datesA: a.dates,
+                doctorA: a.doctor,
+                datesB: b.dates,
+                doctorB: b.doctor,
+            };
+        },
+
+        async applySelectedSwap() {
+            const swap = this.buildSwapPayload();
+            if (!swap) return;
+            this.swapApplying = true;
+            try {
+                await window.db.applyCallSwap(swap);
+                this.showToast('Swap applied');
+                this.clearSwapSelection();
+                // Do NOT call refreshSchedule() here — the transaction bumped
+                // scheduleMeta.publishedAt so the onScheduleMetaChange listener
+                // will fire and rebuild the calendar exactly once.
+            } catch (e) {
+                this.showToast(e.message || 'Swap failed. Please try again.');
+                this.clearSwapSelection();
+                // On failure no publishedAt bump happened, so the listener won't
+                // fire. Explicitly resync to authoritative Firestore state.
+                await this.refreshSchedule();
+            } finally {
+                this.swapApplying = false;
+            }
+        },
+
+        // ================================================================
+        // TOAST
+        // ================================================================
+
+        showToast(message) {
+            this.toastMessage = message;
+            this.toastVisible = true;
+            if (this._toastTimer) clearTimeout(this._toastTimer);
+            this._toastTimer = setTimeout(() => { this.toastVisible = false; }, 4000);
+        },
 
         // --- Helpers ---
         formatDate(dateStr) {
