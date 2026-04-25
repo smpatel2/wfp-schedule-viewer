@@ -526,12 +526,23 @@ function app() {
 
         // --- Calendar (Doctor View) ---
         async loadScheduleAndInitCalendar() {
-            if (!this.scheduleMeta) return;
+            // Attach the meta listener on every early-return path so a doctor
+            // tab that loads with no schedule (or an expired one) still picks
+            // up a fresh publish without a manual reload. Symmetric with
+            // loadAdminView's empty-state handling.
+            if (!this.scheduleMeta) {
+                this._attachMetaListener();
+                return;
+            }
 
             const todayISO = this.mockMode ? "2026-07-01" : getClinicToday();
 
-            // Don't init calendar if schedule is entirely in the past
+            // Don't init calendar if schedule is entirely in the past, but
+            // still attach the listener — when a new schedule publishes and
+            // bumps publishedAt, refreshSchedule() will re-fetch scheduleMeta,
+            // see the new range, and hydrate the calendar.
             if (this.scheduleMeta.endDate < todayISO) {
+                this._attachMetaListener();
                 return;
             }
 
