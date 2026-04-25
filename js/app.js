@@ -70,6 +70,26 @@ function toISO(date) {
 }
 
 /**
+ * HTML-escape a string for safe insertion into innerHTML / insertAdjacentHTML.
+ * Any schedule field rendered into a template-literal HTML string MUST pass
+ * through this — admin writes are limited to 64 chars but otherwise arbitrary,
+ * and a direct devtools write like `<img src=x onerror=...>` would otherwise
+ * execute for every viewer. The server-side rule also requires doctor names
+ * to match /doctors/{name}, but client-side escaping is the belt-and-braces
+ * defense and costs nothing. Also covers `holiday` since admin-SDK-authored
+ * holiday text isn't guaranteed to be HTML-safe either.
+ */
+function esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+    }[c]));
+}
+
+/**
  * Thrown when a tapped calendar cell cannot participate in a swap —
  * e.g. it's closed, unassigned, or has no published entry.
  * The tap handler catches this and shows a toast; it never surfaces to the user
@@ -633,19 +653,19 @@ function app() {
                 // Holiday pill
                 if (entry.holiday) {
                     const shortName = this.holidayShortNames[entry.holiday] || entry.holiday;
-                    html += `<div class="holiday-pill">${shortName}</div>`;
+                    html += `<div class="holiday-pill">${esc(shortName)}</div>`;
                 }
 
                 // Call doctor pill
                 if (entry.callDoctor) {
                     const cls = this.getDoctorColorClass(entry.callDoctor);
-                    html += `<div class="doctor-name-pill ${cls}">${entry.callDoctor}</div>`;
+                    html += `<div class="doctor-name-pill ${cls}">${esc(entry.callDoctor)}</div>`;
                 }
 
                 // Clinic doctor (Saturdays only, skip "Closed")
                 if (entry.clinicDoctor && entry.clinicDoctor !== 'Closed' && entry.clinicDoctor !== '') {
                     const cls = this.getDoctorColorClass(entry.clinicDoctor);
-                    html += `<div class="clinic-doctor-pill ${cls}"><span class="clinic-label">Clinic: </span>${entry.clinicDoctor}</div>`;
+                    html += `<div class="clinic-doctor-pill ${cls}"><span class="clinic-label">Clinic: </span>${esc(entry.clinicDoctor)}</div>`;
                 }
 
                 this.cellHtmlCache[dateStr] = html;
