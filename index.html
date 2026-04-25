@@ -272,6 +272,15 @@
                     <p class="admin-empty-hint">This view will refresh automatically when a schedule is published.</p>
                 </div>
 
+                <!-- Admin expired state: published schedule's endDate has passed -->
+                <div class="admin-empty-state"
+                     x-show="adminMode && scheduleExpired"
+                     x-cloak>
+                    <h2>Schedule Expired</h2>
+                    <p>The published schedule's date range has ended. Generate and publish a new schedule from the scheduler app to apply swaps to upcoming dates.</p>
+                    <p class="admin-empty-hint">This view will refresh automatically when a new schedule is published.</p>
+                </div>
+
                 <!-- No calendar fallback (doctor mode, expired schedule) -->
                 <div class="no-schedule-message"
                      x-show="!adminMode && scheduleExpired"

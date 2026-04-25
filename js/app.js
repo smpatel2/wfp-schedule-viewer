@@ -567,9 +567,14 @@ function app() {
             if (!window.db) await window._dbReady;
             try {
                 this.scheduleMeta = await window.db.getScheduleMeta();
-                if (!this.scheduleMeta) {
-                    // No schedule yet — attach listener so the admin tab
-                    // auto-transitions when one is published.
+                const todayISO = this.mockMode ? "2026-07-01" : getClinicToday();
+
+                // No schedule, or the published schedule is entirely in the
+                // past — render the appropriate empty/expired state instead
+                // of a calendar (otherwise _computeHydrateRange would produce
+                // an inverted range and we'd mount a blank calendar). The
+                // listener stays attached so a fresh publish wakes the tab.
+                if (!this.scheduleMeta || this.scheduleMeta.endDate < todayISO) {
                     this._attachMetaListener();
                     return;
                 }
@@ -594,6 +599,23 @@ function app() {
             try {
                 this.scheduleMeta = await window.db.getScheduleMeta();
                 if (!this.scheduleMeta) return;
+
+                const todayISO = this.mockMode ? "2026-07-01" : getClinicToday();
+
+                // If the schedule is now entirely in the past — e.g. an admin
+                // tab sat past endDate, or a republish narrowed the range —
+                // tear down any stale calendar and clear the cell cache. The
+                // x-show'd expired-state messaging will surface via Alpine
+                // binding on `scheduleExpired`.
+                if (this.scheduleMeta.endDate < todayISO) {
+                    if (this.calendar) {
+                        this.calendar.destroy();
+                        this.calendar = null;
+                    }
+                    this.scheduleData = {};
+                    this.cellHtmlCache = {};
+                    return;
+                }
 
                 const { rangeStart, rangeEnd } = this._computeHydrateRange();
                 const entries = await window.db.getScheduleRange(rangeStart, rangeEnd);
