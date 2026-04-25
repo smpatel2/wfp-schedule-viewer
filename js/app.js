@@ -645,11 +645,28 @@ function app() {
                     : new Date(meta.publishedAt).getTime();
                 if (incoming <= current) return;
 
-                // Clear any in-progress selection so stale highlights
-                // don't persist into the rebuilt calendar
-                if (alpine.editMode && alpine.swapSelection?.a) {
-                    alpine.showToast('Schedule updated — selection cleared.');
-                    alpine.clearSwapSelection();
+                // Clear any in-progress edit state so the rebuilt calendar
+                // doesn't inherit stale references to pre-refresh scheduleData.
+                // Three things can be in-flight when an external update lands:
+                //   1. An open disambiguation modal whose Promise hasn't resolved
+                //      yet — dismissing with null lets the awaiting tap handler
+                //      bail cleanly instead of resuming with stale `entry` data
+                //      after the rebuild.
+                //   2. A `.selected-a` highlight + populated swapSelection.a
+                //      whose `.dates`/`.doctor` may no longer match Firestore.
+                //   3. Both at once (admin mid-second-tap modal).
+                // Toast once if any of these were active.
+                if (alpine.editMode) {
+                    const hadPendingState = alpine.modalVisible || !!alpine.swapSelection?.a;
+                    if (alpine.modalVisible) {
+                        alpine.dismissModal(null);   // resolves pending Promise → handler returns
+                    }
+                    if (alpine.swapSelection?.a) {
+                        alpine.clearSwapSelection();
+                    }
+                    if (hadPendingState) {
+                        alpine.showToast('Schedule updated — selection cleared.');
+                    }
                 }
 
                 alpine.refreshSchedule();
