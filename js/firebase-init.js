@@ -92,6 +92,7 @@ function createMockDb() {
     let _scheduleMeta = {
         startDate: "2026-07-01",
         endDate: "2026-07-31",
+        dayCount: Object.keys(_schedule).length,
         publishedAt: new Date("2026-06-28T10:00:00"),
     };
     const _metaCallbacks = new Set();
@@ -229,6 +230,10 @@ function createMockDb() {
                 .filter(s => s.date >= startDate && s.date <= endDate)
                 .map(s => ({ ...s }))
                 .sort((a, b) => a.date.localeCompare(b.date));
+        },
+
+        async getScheduleRangeFromServer(startDate, endDate) {
+            return this.getScheduleRange(startDate, endDate);
         },
     };
 }
@@ -390,6 +395,7 @@ function createFirestoreDb(db, auth) {
             return {
                 startDate: data.startDate,
                 endDate: data.endDate,
+                dayCount: data.dayCount ?? null,
                 publishedAt: data.publishedAt ? data.publishedAt.toDate() : null,
             };
         },
@@ -410,6 +416,18 @@ function createFirestoreDb(db, auth) {
                 orderBy("date")
             );
             const snap = await getDocs(q);
+            return snap.docs.map(d => d.data());
+        },
+
+        async getScheduleRangeFromServer(startDate, endDate) {
+            const { collection, getDocsFromServer, query, where, orderBy } = await fs();
+            const q = query(
+                collection(db, "schedule"),
+                where("date", ">=", startDate),
+                where("date", "<=", endDate),
+                orderBy("date")
+            );
+            const snap = await getDocsFromServer(q);
             return snap.docs.map(d => d.data());
         },
     };

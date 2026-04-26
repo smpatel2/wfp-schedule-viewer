@@ -563,6 +563,79 @@ main {
     color: var(--text-muted);
 }
 
+/* ============================================
+   ICS DOWNLOAD ROW
+   ============================================ */
+.calendar-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 0 1rem;
+    margin: 0.5rem 0 0.75rem;
+}
+
+.calendar-actions-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.375rem;
+    max-width: 22rem;
+}
+
+.btn.btn-secondary.btn-ics {
+    gap: 0.5rem;
+    background: var(--white);
+    color: var(--oxford);
+    border-color: var(--oxford-20);
+}
+
+.btn.btn-secondary.btn-ics:hover:not(:disabled) {
+    border-color: var(--sky);
+    background: var(--sky-10);
+    color: var(--sky);
+}
+
+.btn.btn-secondary.btn-ics:disabled {
+    opacity: 0.55;
+    cursor: wait;
+}
+
+.btn-ics-icon {
+    flex: 0 0 auto;
+}
+
+.calendar-actions-hint {
+    margin: 0;
+    font-size: 0.75rem;
+    line-height: 1.45;
+    color: var(--text-muted);
+    text-align: right;
+}
+
+@media (max-width: 600px) {
+    .calendar-actions {
+        justify-content: stretch;
+        padding: 0 0.75rem;
+    }
+
+    .calendar-actions-inner {
+        width: 100%;
+        max-width: none;
+        align-items: stretch;
+    }
+
+    .btn.btn-secondary.btn-ics {
+        width: 100%;
+        justify-content: center;
+        min-height: 44px;
+        padding: 0.875rem 1rem;
+        font-size: 1rem;
+    }
+
+    .calendar-actions-hint {
+        text-align: center;
+    }
+}
+
 
 /* ============================================
    CALENDAR CONTAINER
@@ -1149,7 +1222,8 @@ body.edit-mode .fc-daygrid-day {
     font-size: 0.875rem;
     font-weight: 600;
     font-family: var(--font);
-    white-space: nowrap;
+    line-height: 1.35;
+    white-space: normal;
     max-width: calc(100vw - 2rem);
     text-align: center;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.30);

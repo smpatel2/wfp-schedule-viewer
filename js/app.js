@@ -170,6 +170,9 @@ function app() {
         // --- Filter ---
         myCallsFilter: false,
 
+        // --- ICS Download ---
+        icsDownloading: false,
+
         // --- Admin Mode ---
         adminMode: false,
 
@@ -230,6 +233,7 @@ function app() {
                     alpine.scheduleData = {};
                     alpine.cellHtmlCache = {};
                     alpine.myCallsFilter = false;
+                    alpine.icsDownloading = false;
                     alpine.editMode = false;
                     alpine.swapSelection = { a: null, b: null };
                     document.body.classList.remove('edit-mode');
@@ -364,6 +368,7 @@ function app() {
             this.scheduleData = {};
             this.cellHtmlCache = {};
             this.myCallsFilter = false;
+            this.icsDownloading = false;
         },
 
         // --- My Calls Filter ---
@@ -387,6 +392,94 @@ function app() {
                 );
                 cell.classList.toggle('fc-day-filtered', !isMyDay);
             });
+        },
+
+        // --- ICS Download ---
+        _calendarDays(startISO, endISO) {
+            const start = new Date(startISO + 'T12:00:00');
+            const end = new Date(endISO + 'T12:00:00');
+            return Math.round((end - start) / 86400000) + 1;
+        },
+
+        _expectedDocCount() {
+            if (typeof this.scheduleMeta?.dayCount === 'number') {
+                return this.scheduleMeta.dayCount;
+            }
+            return this._calendarDays(this.scheduleMeta.startDate, this.scheduleMeta.endDate);
+        },
+
+        async downloadMyICS() {
+            if (!this.doctorName || !this.scheduleMeta || this.scheduleExpired) return;
+            if (this.icsDownloading) return;
+
+            this.icsDownloading = true;
+            try {
+                const requestedStart = this.scheduleMeta.startDate;
+                const requestedEnd = this.scheduleMeta.endDate;
+
+                let entries;
+                let degradedFromServer = false;
+                try {
+                    entries = await window.db.getScheduleRangeFromServer(requestedStart, requestedEnd);
+                } catch (e) {
+                    const offline = e?.code === 'unavailable' ||
+                        e?.code === 'failed-precondition' ||
+                        (typeof navigator !== 'undefined' && navigator.onLine === false);
+                    if (!offline) throw e;
+
+                    entries = await window.db.getScheduleRange(requestedStart, requestedEnd);
+                    degradedFromServer = true;
+                }
+
+                if (!entries || entries.length === 0) {
+                    this.showToast(
+                        degradedFromServer
+                            ? 'Offline - no cached schedule available. Reconnect and try again.'
+                            : 'No published schedule entries found. Try again in a moment.'
+                    );
+                    return;
+                }
+
+                const expectedDocs = this._expectedDocCount();
+                const partial = entries.length < expectedDocs;
+                const actualStart = entries[0].date;
+                const actualEnd = entries[entries.length - 1].date;
+
+                const { buildPersonalICS } = await import('./ics.js');
+                const ics = buildPersonalICS(entries, this.doctorName);
+
+                const safeName = this.doctorName.replace(/[^A-Za-z0-9_-]/g, '_');
+                const partialTag = partial ? '_PARTIAL' : '';
+                const filename = `WFP_OnCall_${safeName}_${actualStart}_to_${actualEnd}${partialTag}.ics`;
+
+                const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+                if (partial) {
+                    const fmt = iso => new Date(iso + 'T12:00:00')
+                        .toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    this.showToast(
+                        `Partial download (${fmt(actualStart)}-${fmt(actualEnd)} of ` +
+                        `${fmt(requestedStart)}-${fmt(requestedEnd)}). ` +
+                        'Reconnect and tap again for the full range.',
+                        { duration: 8000 }
+                    );
+                } else {
+                    this.showToast('Schedule downloaded. Open the file to add events to your calendar.');
+                }
+            } catch (e) {
+                console.error('[ICS] Download failed:', e);
+                this.showToast('Download failed. Please try again.');
+            } finally {
+                this.icsDownloading = false;
+            }
         },
 
         // --- Today Card ---
@@ -1104,11 +1197,12 @@ function app() {
         // TOAST
         // ================================================================
 
-        showToast(message) {
+        showToast(message, options = {}) {
             this.toastMessage = message;
             this.toastVisible = true;
             if (this._toastTimer) clearTimeout(this._toastTimer);
-            this._toastTimer = setTimeout(() => { this.toastVisible = false; }, 4000);
+            const duration = options.duration ?? 4000;
+            this._toastTimer = setTimeout(() => { this.toastVisible = false; }, duration);
         },
 
         // --- Helpers ---

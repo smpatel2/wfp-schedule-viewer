@@ -5,7 +5,7 @@
  * Schedule data caching is handled by Firestore's persistentLocalCache.
  */
 
-const CACHE_NAME = 'wfp-schedule-v3';
+const CACHE_NAME = 'wfp-schedule-v4';
 
 const APP_SHELL = [
     '/',
@@ -13,6 +13,7 @@ const APP_SHELL = [
     '/css/styles.css',
     '/js/app.js',
     '/js/firebase-init.js',
+    '/js/ics.js',
     '/firebase-config.js',
     '/manifest.json',
     '/icons/icon-192.png',
@@ -84,6 +85,6 @@ self.addEventListener('fetch', (event) => {
                 caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
                 return response;
             })
-            .catch(() => caches.match(event.request))
+            .catch(() => caches.match(event.request, { ignoreSearch: true }))
     );
 });
