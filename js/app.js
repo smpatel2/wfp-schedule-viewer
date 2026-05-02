@@ -181,6 +181,9 @@ function app() {
         swapSelection: { a: null, b: null }, // { shiftType, dates, doctor }
         swapApplying: false,
 
+        // --- Holidays Modal ---
+        holidaysModalVisible: false,
+
         // --- Disambiguation Modal ---
         modalVisible: false,
         modalType: null,          // 'clinic-or-call' | 'block-or-single'
@@ -236,6 +239,7 @@ function app() {
                     alpine.icsDownloading = false;
                     alpine.editMode = false;
                     alpine.swapSelection = { a: null, b: null };
+                    alpine.holidaysModalVisible = false;
                     document.body.classList.remove('edit-mode');
                     sessionStorage.removeItem('schedule_viewer_doctor');
                     return;
@@ -1203,6 +1207,72 @@ function app() {
             if (this._toastTimer) clearTimeout(this._toastTimer);
             const duration = options.duration ?? 4000;
             this._toastTimer = setTimeout(() => { this.toastVisible = false; }, duration);
+        },
+
+        // --- Holidays Modal ---
+        openHolidaysModal() {
+            this.holidaysModalVisible = true;
+        },
+
+        closeHolidaysModal() {
+            this.holidaysModalVisible = false;
+        },
+
+        // Group consecutive same-holiday/same-doctor scheduleData entries into
+        // one row per holiday block (e.g. Memorial Day's Sat/Sun/Mon coverage
+        // collapses to a single row). Thanksgiving A and B stay separate
+        // because their holiday text differs.
+        get holidayList() {
+            const entries = Object.entries(this.scheduleData)
+                .filter(([_, e]) => e && e.holiday)
+                .sort((a, b) => a[0].localeCompare(b[0]));
+            if (entries.length === 0) return [];
+
+            const groups = [];
+            let cur = null;
+            for (const [dateStr, entry] of entries) {
+                const doc = entry.callDoctor || '';
+                const sameGroup = cur
+                    && cur.holiday === entry.holiday
+                    && cur.doctor === doc
+                    && this._isNextDay(cur.lastDate, dateStr);
+                if (sameGroup) {
+                    cur.lastDate = dateStr;
+                } else {
+                    cur = {
+                        holiday: entry.holiday,
+                        doctor: doc,
+                        firstDate: dateStr,
+                        lastDate: dateStr,
+                    };
+                    groups.push(cur);
+                }
+            }
+
+            const today = this.mockMode ? '2026-07-01' : getClinicToday();
+            return groups.map((g, idx) => ({
+                key: g.firstDate + '_' + idx,
+                name: g.holiday,
+                doctor: g.doctor,
+                doctorLabel: g.doctor ? 'Dr. ' + g.doctor : 'Unassigned',
+                dateLabel: this._formatHolidayRange(g.firstDate, g.lastDate),
+                isMine: !!this.doctorName && g.doctor === this.doctorName,
+                isPast: g.lastDate < today,
+            }));
+        },
+
+        _isNextDay(prevDate, nextDate) {
+            const p = new Date(prevDate + 'T12:00:00');
+            p.setDate(p.getDate() + 1);
+            return toISO(p) === nextDate;
+        },
+
+        _formatHolidayRange(firstDate, lastDate) {
+            const opts = { weekday: 'short', month: 'short', day: 'numeric' };
+            const first = new Date(firstDate + 'T12:00:00').toLocaleDateString('en-US', opts);
+            if (firstDate === lastDate) return first;
+            const last = new Date(lastDate + 'T12:00:00').toLocaleDateString('en-US', opts);
+            return first + ' – ' + last;
         },
 
         // --- Helpers ---

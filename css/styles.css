@@ -564,23 +564,26 @@ main {
 }
 
 /* ============================================
-   ICS DOWNLOAD ROW
+   ACTION BUTTONS ROW (Holidays + ICS download)
    ============================================ */
 .calendar-actions {
     display: flex;
     justify-content: flex-end;
+    gap: 0.5rem;
     padding: 0 1rem;
     margin: 0.5rem 0 0.75rem;
 }
 
-.btn.btn-secondary.btn-ics {
+.btn.btn-secondary.btn-ics,
+.btn.btn-secondary.btn-holidays {
     gap: 0.5rem;
     background: var(--white);
     color: var(--oxford);
     border-color: var(--oxford-20);
 }
 
-.btn.btn-secondary.btn-ics:hover:not(:disabled) {
+.btn.btn-secondary.btn-ics:hover:not(:disabled),
+.btn.btn-secondary.btn-holidays:hover:not(:disabled) {
     border-color: var(--sky);
     background: var(--sky-10);
     color: var(--sky);
@@ -591,7 +594,7 @@ main {
     cursor: wait;
 }
 
-.btn-ics-icon {
+.btn-action-icon {
     flex: 0 0 auto;
 }
 
@@ -601,12 +604,13 @@ main {
         padding: 0 0.75rem;
     }
 
-    .btn.btn-secondary.btn-ics {
-        width: 100%;
+    .btn.btn-secondary.btn-ics,
+    .btn.btn-secondary.btn-holidays {
+        flex: 1;
         justify-content: center;
         min-height: 44px;
-        padding: 0.875rem 1rem;
-        font-size: 1rem;
+        padding: 0.875rem 0.75rem;
+        font-size: 0.9375rem;
     }
 }
 
@@ -1178,6 +1182,79 @@ body.edit-mode .fc-daygrid-day {
 
 .modal-cancel-link:hover {
     color: var(--oxford);
+}
+
+/* ============================================
+   HOLIDAYS MODAL
+   ============================================ */
+.holidays-modal-card {
+    max-width: 460px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    padding: 1.5rem 1.5rem 1rem;
+}
+
+.holidays-list {
+    overflow-y: auto;
+    margin: 0 -0.25rem 0.5rem;
+    padding: 0 0.25rem;
+    -webkit-overflow-scrolling: touch;
+}
+
+.holiday-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.625rem 0.75rem;
+    border-bottom: 1px solid var(--oxford-10);
+}
+
+.holiday-row:last-child {
+    border-bottom: none;
+}
+
+.holiday-row-mine {
+    background: var(--sky-10);
+    border-radius: 6px;
+}
+
+.holiday-row-past {
+    opacity: 0.5;
+}
+
+.holiday-row-info {
+    min-width: 0;
+    flex: 1;
+}
+
+.holiday-row-name {
+    font-weight: 700;
+    color: var(--oxford);
+    font-size: 0.9375rem;
+    line-height: 1.2;
+}
+
+.holiday-row-date {
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    margin-top: 0.125rem;
+}
+
+.holiday-row-doctor {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--sky);
+    white-space: nowrap;
+    flex: 0 0 auto;
+}
+
+.holidays-empty {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    padding: 1rem 0.5rem;
+    text-align: center;
 }
 
 /* ============================================
