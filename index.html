@@ -20,7 +20,7 @@
 
     <!-- Firebase init (with mock fallback) -->
     <script type="module">
-        import { initDb } from "./js/firebase-init.js?v=9";
+        import { initDb } from "./js/firebase-init.js?v=10";
         window._dbReady = initDb().then(db => { window.db = db; return db; });
     </script>
 
@@ -29,7 +29,7 @@
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 
     <!-- App styles -->
-    <link rel="stylesheet" href="css/styles.css?v=9">
+    <link rel="stylesheet" href="css/styles.css?v=10">
 
     <!-- Service Worker registration -->
     <script>
@@ -100,17 +100,22 @@
                 <div class="login-body">
                     <form @submit.prevent="login" class="login-form">
 
-                        <!-- Doctor flow: select by name -->
+                        <!-- Doctor flow: select by name (or "Staff Login" for shared office account) -->
                         <template x-if="!adminLoginMode">
                             <div class="form-group">
                                 <label for="doctor-select">Physician</label>
                                 <div class="select-with-prefix">
-                                    <span class="select-prefix">Dr.</span>
+                                    <span class="select-prefix" x-show="doctorName !== '__STAFF__'">Dr.</span>
                                     <select id="doctor-select" x-model="doctorName" required>
                                         <option value="" disabled>Select your name</option>
-                                        <template x-for="doc in doctors" :key="doc.name">
-                                            <option :value="doc.name" x-text="doc.name"></option>
-                                        </template>
+                                        <optgroup label="Physicians">
+                                            <template x-for="doc in doctors" :key="doc.name">
+                                                <option :value="doc.name" x-text="doc.name"></option>
+                                            </template>
+                                        </optgroup>
+                                        <optgroup label="Other">
+                                            <option value="__STAFF__">Staff Login</option>
+                                        </optgroup>
                                     </select>
                                 </div>
                             </div>
@@ -184,8 +189,12 @@
             <h1><span class="heading-bold">Wheaton</span> <span class="heading-light">Family Practice</span></h1>
             <div class="header-right">
                 <!-- Doctor mode: show doctor badge -->
-                <template x-if="!adminMode">
+                <template x-if="!adminMode && !staffMode">
                     <span class="doctor-badge" x-text="'Dr. ' + doctorName"></span>
+                </template>
+                <!-- Staff mode: show "Office" badge to confirm session identity -->
+                <template x-if="staffMode">
+                    <span class="staff-badge">Office</span>
                 </template>
                 <button class="btn btn-logout" @click="logout">Sign Out</button>
             </div>
@@ -260,7 +269,7 @@
 
             <!-- ========== ACTION BUTTONS (doctor mode only) ========== -->
             <div class="calendar-actions"
-                 x-show="!adminMode && scheduleMeta && doctorName && !scheduleExpired"
+                 x-show="!adminMode && !staffMode && scheduleMeta && doctorName && !scheduleExpired"
                  x-cloak>
                 <button class="btn btn-secondary btn-holidays"
                         @click="openHolidaysModal()">
@@ -325,7 +334,7 @@
 
         <!-- Floating filter button (doctor mode only) -->
         <button class="filter-fab"
-                x-show="!adminMode && Object.keys(scheduleData).length > 0"
+                x-show="!adminMode && !staffMode && Object.keys(scheduleData).length > 0"
                 x-cloak
                 :class="{ active: myCallsFilter }"
                 @click="toggleMyCallsFilter()"
@@ -426,6 +435,6 @@
     <div class="toast" x-show="toastVisible" x-cloak x-text="toastMessage"></div>
 
     <!-- App logic -->
-    <script src="js/app.js?v=9"></script>
+    <script src="js/app.js?v=10"></script>
 </body>
 </html>

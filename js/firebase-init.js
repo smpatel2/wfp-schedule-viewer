@@ -20,7 +20,13 @@ const MOCK_DOCTORS = [
 ];
 
 const MOCK_ADMIN_EMAIL = 'admin@mock.dev';
+const MOCK_STAFF_EMAIL = 'staff@mock.dev';
 const MOCK_PASSWORD = "test";
+
+// Production shared staff account email. UPDATE THIS to match the Firebase
+// Auth account you create for office staff. The same value must also exist
+// as a doc at /staff/{email-lowercased} in Firestore (existence check).
+const STAFF_EMAIL = 'staff@wfp.duly.com';
 
 /**
  * Generate mock schedule data for July 2026.
@@ -103,11 +109,19 @@ function createMockDb() {
 
     return {
         _mock: true,
+        STAFF_EMAIL: MOCK_STAFF_EMAIL,
 
         // --- Auth ---
         async signIn(email, password) {
             // Accept admin mock account
             if (email === MOCK_ADMIN_EMAIL) {
+                if (password !== MOCK_PASSWORD) throw { code: 'auth/invalid-credential', message: 'Wrong password' };
+                _mockUser = { email };
+                _notifyAuth();
+                return;
+            }
+            // Accept staff mock account
+            if (email === MOCK_STAFF_EMAIL) {
                 if (password !== MOCK_PASSWORD) throw { code: 'auth/invalid-credential', message: 'Wrong password' };
                 _mockUser = { email };
                 _notifyAuth();
@@ -145,6 +159,14 @@ function createMockDb() {
         async isAdmin(email) {
             if (!email) return false;
             return email.toLowerCase().includes('admin');
+        },
+
+        // --- Staff ---
+        // Only the exact mock staff email triggers staff mode in mock,
+        // mirroring how the real isStaff checks for an exact /staff doc.
+        async isStaff(email) {
+            if (!email) return false;
+            return email.toLowerCase() === MOCK_STAFF_EMAIL;
         },
 
         // --- Live Listener ---
@@ -257,6 +279,7 @@ function createFirestoreDb(db, auth) {
 
     return {
         _mock: false,
+        STAFF_EMAIL,
 
         // --- Auth ---
         async signIn(email, password) {
@@ -286,6 +309,20 @@ function createFirestoreDb(db, auth) {
                 return snap.exists();
             } catch (e) {
                 // permission-denied means not admin (or not authenticated yet)
+                return false;
+            }
+        },
+
+        // --- Staff ---
+        // Reads /staff/{email} doc — exists means staff.
+        // Each user can only read their own doc (per security rules).
+        async isStaff(email) {
+            if (!email) return false;
+            try {
+                const { doc, getDoc } = await fs();
+                const snap = await getDoc(doc(db, 'staff', email.toLowerCase()));
+                return snap.exists();
+            } catch (e) {
                 return false;
             }
         },

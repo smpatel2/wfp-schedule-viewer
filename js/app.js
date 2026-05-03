@@ -176,6 +176,9 @@ function app() {
         // --- Admin Mode ---
         adminMode: false,
 
+        // --- Staff Mode (shared read-only office account) ---
+        staffMode: false,
+
         // --- Edit Mode (admin only) ---
         editMode: false,
         swapSelection: { a: null, b: null }, // { shiftType, dates, doctor }
@@ -229,6 +232,7 @@ function app() {
                     if (alpine.calendar) { alpine.calendar.destroy(); alpine.calendar = null; }
                     alpine.authenticated = false;
                     alpine.adminMode = false;
+                    alpine.staffMode = false;
                     alpine.doctorName = '';
                     alpine.todayData = null;
                     alpine.scheduleMeta = null;
@@ -247,16 +251,26 @@ function app() {
 
                 const email = user.email.toLowerCase();
                 const doctorEntry = alpine.doctors.find(d => d.email.toLowerCase() === email);
+                const staffFlag = await window.db.isStaff(email);
                 const adminFlag = await window.db.isAdmin(email);
 
-                if (adminFlag && !doctorEntry) {
+                if (staffFlag) {
+                    // Shared office staff account — read-only, depersonalized
+                    alpine.staffMode = true;
+                    alpine.adminMode = false;
+                    alpine.doctorName = '';
+                    alpine.authenticated = true;
+                    await alpine.loadStaffView();
+                } else if (adminFlag && !doctorEntry) {
                     // Admin-only account — no today cards, no My Calls, just edit calendar
+                    alpine.staffMode = false;
                     alpine.adminMode = true;
                     alpine.doctorName = '';
                     alpine.authenticated = true;
                     await alpine.loadAdminView();
                 } else if (doctorEntry) {
                     // Normal doctor account
+                    alpine.staffMode = false;
                     alpine.adminMode = false;
                     alpine.doctorName = doctorEntry.name;
                     alpine.authenticated = true;
@@ -265,7 +279,7 @@ function app() {
                         setTimeout(() => alpine.loadScheduleAndInitCalendar(), 0);
                     });
                 } else {
-                    // Email not in /doctors and not in /admins — reject
+                    // Email not in /staff, /admins, or /doctors — reject
                     await window.db.signOut();
                     alpine.loginError = 'Account not recognized. Contact the administrator.';
                 }
@@ -323,10 +337,21 @@ function app() {
                         this.loginError = 'Please select your name.';
                         return;
                     }
-                    email = this.doctorEmailMap[this.doctorName];
-                    if (!email) {
-                        this.loginError = 'Doctor not found. Contact the administrator.';
-                        return;
+                    if (this.doctorName === '__STAFF__') {
+                        // Map the dropdown sentinel to the shared staff account email.
+                        // Read from the already-initialized db singleton (no dynamic
+                        // import — would version-skew with index.html's static import).
+                        email = window.db.STAFF_EMAIL;
+                        if (!email) {
+                            this.loginError = 'Staff login is not configured. Contact the administrator.';
+                            return;
+                        }
+                    } else {
+                        email = this.doctorEmailMap[this.doctorName];
+                        if (!email) {
+                            this.loginError = 'Doctor not found. Contact the administrator.';
+                            return;
+                        }
                     }
                 }
 
@@ -362,6 +387,7 @@ function app() {
             document.body.classList.remove('edit-mode');
             await window.db.signOut();
             this.password = '';
+            this.doctorName = '';
             if (this.calendar) {
                 this.calendar.destroy();
                 this.calendar = null;
@@ -373,6 +399,8 @@ function app() {
             this.cellHtmlCache = {};
             this.myCallsFilter = false;
             this.icsDownloading = false;
+            this.staffMode = false;
+            this.adminMode = false;
         },
 
         // --- My Calls Filter ---
@@ -661,6 +689,47 @@ function app() {
             }
         },
 
+        // --- Calendar (Staff View) ---
+        // Read-only depersonalized view: today card + Saturday card + calendar.
+        // No My Calls filter, no .ics download, no edit affordances.
+        async loadStaffView() {
+            if (!window.db) await window._dbReady;
+            try {
+                this.scheduleMeta = await window.db.getScheduleMeta();
+                const todayISO = this.mockMode ? "2026-07-01" : getClinicToday();
+
+                // No-schedule and expired-schedule paths: same as admin view —
+                // attach the listener so a future publish wakes the tab.
+                if (!this.scheduleMeta || this.scheduleMeta.endDate < todayISO) {
+                    this._attachMetaListener();
+                    return;
+                }
+
+                // Today card data — same Firestore lookups doctors use, no filter.
+                const todayDataISO = this.mockMode ? "2026-07-08" : getClinicToday();
+                this.todayData = await window.db.getTodaySchedule(todayDataISO);
+                const satISO = this.mockMode ? "2026-07-11" : getNextSaturday(todayDataISO);
+                if (satISO !== todayDataISO) {
+                    this.nextSaturdayData = await window.db.getTodaySchedule(satISO);
+                } else {
+                    this.nextSaturdayData = null;
+                }
+
+                // Calendar — same hydrate path as doctor/admin.
+                const { rangeStart, rangeEnd } = this._computeHydrateRange();
+                const entries = await window.db.getScheduleRange(rangeStart, rangeEnd);
+                this.scheduleData = {};
+                for (const entry of entries) {
+                    this.scheduleData[entry.date] = entry;
+                }
+                this.buildCellHtmlCache();
+                await this.initCalendar();
+                this._attachMetaListener();
+            } catch (e) {
+                console.error('[Staff] loadStaffView failed:', e);
+            }
+        },
+
         // --- Calendar (Admin View) ---
         async loadAdminView() {
             if (!window.db) await window._dbReady;
@@ -730,8 +799,10 @@ function app() {
                 }
                 await this.initCalendar();
 
-                // Doctor mode also refreshes today card
-                if (!this.adminMode && this.doctorName) {
+                // Today card visible in both doctor and staff modes.
+                // loadTodayData() doesn't reference doctorName — safe to call
+                // from either mode after a swap bumps publishedAt.
+                if (!this.adminMode) {
                     await this.loadTodayData();
                 }
             } catch (e) {
