@@ -20,7 +20,7 @@
 
     <!-- Firebase init (with mock fallback) -->
     <script type="module">
-        import { initDb } from "./js/firebase-init.js?v=10";
+        import { initDb } from "./js/firebase-init.js?v=11";
         window._dbReady = initDb().then(db => { window.db = db; return db; });
     </script>
 
@@ -29,7 +29,7 @@
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 
     <!-- App styles -->
-    <link rel="stylesheet" href="css/styles.css?v=10">
+    <link rel="stylesheet" href="css/styles.css?v=11">
 
     <!-- Service Worker registration -->
     <script>
@@ -435,6 +435,6 @@
     <div class="toast" x-show="toastVisible" x-cloak x-text="toastMessage"></div>
 
     <!-- App logic -->
-    <script src="js/app.js?v=10"></script>
+    <script src="js/app.js?v=11"></script>
 </body>
 </html>

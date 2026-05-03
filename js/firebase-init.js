@@ -23,10 +23,10 @@ const MOCK_ADMIN_EMAIL = 'admin@mock.dev';
 const MOCK_STAFF_EMAIL = 'staff@mock.dev';
 const MOCK_PASSWORD = "test";
 
-// Production shared staff account email. UPDATE THIS to match the Firebase
-// Auth account you create for office staff. The same value must also exist
-// as a doc at /staff/{email-lowercased} in Firestore (existence check).
-const STAFF_EMAIL = 'staff@wfp.duly.com';
+// Production shared staff account email. The matching Firebase Auth
+// account + /staff/{email-lowercased} doc must exist in Firestore for
+// the existence check to succeed.
+const STAFF_EMAIL = 'sapan.patel+wfpstaff@gmail.com';
 
 /**
  * Generate mock schedule data for July 2026.
