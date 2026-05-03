@@ -533,6 +533,12 @@ function app() {
         /** Whether today is outside the published schedule range */
         get todayOutOfRange() {
             if (!this.scheduleMeta) return true;
+            if (
+                this.todayISO < this.scheduleMeta.startDate &&
+                this.todayData?.date === this.todayISO
+            ) {
+                return false;
+            }
             return this.todayISO < this.scheduleMeta.startDate || this.todayISO > this.scheduleMeta.endDate;
         },
 
@@ -545,7 +551,7 @@ function app() {
         /** Whether the schedule hasn't started yet (startDate is in the future) */
         get scheduleNotStarted() {
             if (!this.scheduleMeta) return false;
-            return this.scheduleMeta.startDate > this.todayISO;
+            return !this.todayData && this.scheduleMeta.startDate > this.todayISO;
         },
 
         /** Clinic doctor text for the next Saturday */
@@ -614,11 +620,7 @@ function app() {
                 calStart = toISO(addDays(new Date(calStart + 'T12:00:00'), -2));
             }
 
-            const rangeStart = calStart > this.scheduleMeta.startDate
-                ? calStart
-                : this.scheduleMeta.startDate;
-
-            return { rangeStart, rangeEnd: this.scheduleMeta.endDate };
+            return { rangeStart: calStart, rangeEnd: this.scheduleMeta.endDate };
         },
 
         // --- Calendar (Doctor View) ---
