@@ -7,16 +7,15 @@
  */
 
 const MOCK_DOCTORS = [
-    { name: "Ali",      email: "ali@mock.dev",      order: 0 },
-    { name: "Bednarz",  email: "bednarz@mock.dev",  order: 1 },
-    { name: "Browne",   email: "browne@mock.dev",   order: 2 },
-    { name: "Giese",    email: "giese@mock.dev",     order: 3 },
-    { name: "Isoniemi", email: "isoniemi@mock.dev",  order: 4 },
-    { name: "Kemp",     email: "kemp@mock.dev",      order: 5 },
-    { name: "Mackey",   email: "mackey@mock.dev",    order: 6 },
-    { name: "Mathew",   email: "mathew@mock.dev",    order: 7 },
-    { name: "Patel",    email: "patel@mock.dev",     order: 8 },
-    { name: "Rikert",   email: "rikert@mock.dev",    order: 9 },
+    { name: "Bednarz",  email: "bednarz@mock.dev",  order: 0 },
+    { name: "Browne",   email: "browne@mock.dev",   order: 1 },
+    { name: "Giese",    email: "giese@mock.dev",     order: 2 },
+    { name: "Isoniemi", email: "isoniemi@mock.dev",  order: 3 },
+    { name: "Kemp",     email: "kemp@mock.dev",      order: 4 },
+    { name: "Mackey",   email: "mackey@mock.dev",    order: 5 },
+    { name: "Mathew",   email: "mathew@mock.dev",    order: 6 },
+    { name: "Patel",    email: "patel@mock.dev",     order: 7 },
+    { name: "Rikert",   email: "rikert@mock.dev",    order: 8 },
 ];
 
 const MOCK_ADMIN_EMAIL = 'admin@mock.dev';
