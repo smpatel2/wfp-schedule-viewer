@@ -1120,6 +1120,17 @@ body.edit-mode .fc-daygrid-day {
     cursor: not-allowed;
 }
 
+/* Reassign button — sits between Cancel and Apply Swap */
+.swap-confirm-actions .btn-reassign {
+    border-color: rgba(255, 255, 255, 0.50);
+}
+
+/* Admin export row — visually separate from the calendar */
+.admin-export-actions {
+    border-top: 1px solid var(--border);
+    padding-top: 0.75rem;
+}
+
 /* Prevent the FAB from overlapping the confirm bar */
 .swap-confirm-bar ~ .filter-fab,
 .filter-fab {

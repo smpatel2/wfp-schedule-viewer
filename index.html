@@ -20,7 +20,7 @@
 
     <!-- Firebase init (with mock fallback) -->
     <script type="module">
-        import { initDb } from "./js/firebase-init.js?v=11";
+        import { initDb } from "./js/firebase-init.js?v=12";
         window._dbReady = initDb().then(db => { window.db = db; return db; });
     </script>
 
@@ -29,7 +29,7 @@
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 
     <!-- App styles -->
-    <link rel="stylesheet" href="css/styles.css?v=11">
+    <link rel="stylesheet" href="css/styles.css?v=12">
 
     <!-- Service Worker registration -->
     <script>
@@ -177,7 +177,7 @@
                     @click="toggleEditMode()"
                     x-text="editMode ? 'Cancel Edit' : 'Edit Schedule'">
             </button>
-            <span x-show="editMode" class="admin-edit-indicator" x-cloak>tap two dates to swap</span>
+            <span x-show="editMode" class="admin-edit-indicator" x-cloak>tap a date to select, then swap or reassign</span>
             <span class="admin-last-updated" x-show="lastUpdated" x-cloak>
                 Last updated: <span x-text="lastUpdated"></span>
             </span>
@@ -300,6 +300,23 @@
                 </button>
             </div>
 
+            <!-- ========== ADMIN EXPORT BUTTONS (admin edit mode only) ========== -->
+            <div class="calendar-actions admin-export-actions"
+                 x-show="adminMode && editMode"
+                 x-cloak>
+                <button class="btn btn-secondary"
+                        @click="exportFullScheduleCsv()">
+                    <span>Export Full Schedule (CSV)</span>
+                </button>
+                <button class="btn btn-secondary"
+                        @click="exportChangesCsv()"
+                        :disabled="editLog.length === 0">
+                    <span x-text="editLog.length
+                        ? `Export This Session's Changes (${editLog.length})`
+                        : 'No changes this session'"></span>
+                </button>
+            </div>
+
             <!-- ========== CALENDAR ========== -->
             <div id="calendar-container">
                 <!-- Calendar element -->
@@ -351,12 +368,22 @@
             </div>
             <div class="swap-confirm-actions">
                 <button class="btn btn-secondary" @click="clearSwapSelection()">Cancel</button>
+
+                <!-- Reassign button: visible only for the first selected shift -->
+                <button class="btn btn-secondary btn-reassign"
+                        x-show="swapSelection.a && !swapSelection.b"
+                        x-cloak
+                        @click="openReassignModal()">
+                    Reassign&hellip;
+                </button>
+
+                <!-- Apply Swap button: visible only when both A and B are filled and types match -->
                 <button class="btn btn-primary"
                         x-show="swapSelection.b && !swapTypeError"
                         x-cloak
                         :disabled="swapApplying"
                         @click="applySelectedSwap()">
-                    <span x-show="!swapApplying">Apply</span>
+                    <span x-show="!swapApplying">Apply Swap</span>
                     <span x-show="swapApplying" x-cloak>Applying&hellip;</span>
                 </button>
             </div>
@@ -404,6 +431,45 @@
         </div>
     </div>
 
+    <!-- ========== REASSIGN MODAL ========== -->
+    <div class="modal-overlay"
+         x-show="reassignModalVisible"
+         x-cloak
+         @click.self="closeReassignModal()"
+         @keydown.escape.window="if (reassignModalVisible) closeReassignModal()">
+        <div class="modal-card">
+
+            <div class="modal-title">Reassign Shift</div>
+
+            <div class="modal-body">
+                <p x-text="reassignShiftLabel"></p>
+            </div>
+
+            <div class="form-group" style="margin-top: 1rem;">
+                <label for="reassign-doctor-select">Reassign to</label>
+                <select id="reassign-doctor-select"
+                        x-model="reassignTargetDoctor">
+                    <option value="" disabled>Select a doctor</option>
+                    <template x-for="doc in reassignableDoctors" :key="doc.name">
+                        <option :value="doc.name" x-text="'Dr. ' + doc.name"></option>
+                    </template>
+                </select>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn btn-primary"
+                        :disabled="!reassignTargetDoctor || reassignApplying"
+                        @click="applyReassignment()">
+                    <span x-show="!reassignApplying">Apply Reassignment</span>
+                    <span x-show="reassignApplying" x-cloak>Applying&hellip;</span>
+                </button>
+            </div>
+
+            <button class="modal-cancel-link" @click="closeReassignModal()">Cancel</button>
+
+        </div>
+    </div>
+
     <!-- ========== HOLIDAYS MODAL ========== -->
     <div class="modal-overlay holidays-modal-overlay"
          x-show="holidaysModalVisible"
@@ -435,6 +501,6 @@
     <div class="toast" x-show="toastVisible" x-cloak x-text="toastMessage"></div>
 
     <!-- App logic -->
-    <script src="js/app.js?v=11"></script>
+    <script src="js/app.js?v=12"></script>
 </body>
 </html>

@@ -184,6 +184,15 @@ function app() {
         swapSelection: { a: null, b: null }, // { shiftType, dates, doctor }
         swapApplying: false,
 
+        // --- Reassign Modal ---
+        reassignModalVisible: false,
+        reassignTargetDoctor: '',
+        reassignApplying: false,
+
+        // --- Edit provenance + session edit-log ---
+        signedInEmail: '',   // captured from Firebase Auth user in onAuthChanged
+        editLog: [],         // session-only record of swaps/reassigns made this session
+
         // --- Holidays Modal ---
         holidaysModalVisible: false,
 
@@ -243,6 +252,11 @@ function app() {
                     alpine.icsDownloading = false;
                     alpine.editMode = false;
                     alpine.swapSelection = { a: null, b: null };
+                    alpine.reassignModalVisible = false;
+                    alpine.reassignTargetDoctor = '';
+                    alpine.reassignApplying = false;
+                    alpine.editLog = [];
+                    alpine.signedInEmail = '';
                     alpine.holidaysModalVisible = false;
                     document.body.classList.remove('edit-mode');
                     sessionStorage.removeItem('schedule_viewer_doctor');
@@ -250,6 +264,7 @@ function app() {
                 }
 
                 const email = user.email.toLowerCase();
+                alpine.signedInEmail = user.email;   // for the edit-provenance stamp
                 const doctorEntry = alpine.doctors.find(d => d.email.toLowerCase() === email);
                 const staffFlag = await window.db.isStaff(email);
                 const adminFlag = await window.db.isAdmin(email);
@@ -384,6 +399,11 @@ function app() {
             if (this._metaUnsub) { this._metaUnsub(); this._metaUnsub = null; }
             this.editMode = false;
             this.swapSelection = { a: null, b: null };
+            this.reassignModalVisible = false;
+            this.reassignTargetDoctor = '';
+            this.reassignApplying = false;
+            this.editLog = [];
+            this.signedInEmail = '';
             document.body.classList.remove('edit-mode');
             await window.db.signOut();
             this.password = '';
@@ -849,7 +869,9 @@ function app() {
                 //   3. Both at once (admin mid-second-tap modal).
                 // Toast once if any of these were active.
                 if (alpine.editMode) {
-                    const hadPendingState = alpine.modalVisible || !!alpine.swapSelection?.a;
+                    const hadPendingState = alpine.modalVisible
+                        || !!alpine.swapSelection?.a
+                        || alpine.reassignModalVisible;
                     if (alpine.modalVisible) {
                         alpine.dismissModal(null);   // resolves pending Promise → handler returns
                     }
@@ -1029,6 +1051,48 @@ function app() {
                     el.classList.remove('fc-day-selected-a', 'fc-day-selected-b');
                 });
             this.swapSelection = { a: null, b: null };
+            // Reset reassign modal/selection state (NOT editLog/signedInEmail —
+            // those are session-scoped and only reset on sign-out).
+            this.reassignModalVisible = false;
+            this.reassignTargetDoctor = '';
+            this.reassignApplying = false;
+        },
+
+        /** Open the reassign doctor picker for the currently selected shift. */
+        openReassignModal() {
+            if (!this.swapSelection.a || this.swapSelection.b) return;
+            this.reassignTargetDoctor = '';
+            this.reassignModalVisible = true;
+        },
+
+        /** Close the reassign modal without applying anything. */
+        closeReassignModal() {
+            this.reassignModalVisible = false;
+            this.reassignTargetDoctor = '';
+        },
+
+        /**
+         * Record schedule edits in the session log (collapses re-edits by date+field).
+         * @param {{dates:string[], field:string, fromDoctor:string, toDoctor:string, kind:string}} change
+         */
+        _recordEdits({ dates, field, fromDoctor, toDoctor, kind }) {
+            for (const date of dates) {
+                const key = `${date}|${field}`;
+                const existing = this.editLog.find(e => e.key === key);
+                if (existing) {
+                    // Re-edit of the same slot: keep the ORIGINAL fromDoctor, update toDoctor.
+                    existing.toDoctor = toDoctor;
+                    existing.kind = kind;
+                    existing.at = new Date().toISOString();
+                } else {
+                    this.editLog.push({
+                        key, date, field, fromDoctor, toDoctor, kind,
+                        at: new Date().toISOString(),
+                    });
+                }
+            }
+            // Drop net-zero edits (slot returned to its original doctor).
+            this.editLog = this.editLog.filter(e => e.fromDoctor !== e.toDoctor);
         },
 
         _highlightShift(shift, cls) {
@@ -1058,7 +1122,7 @@ function app() {
         get swapConfirmText() {
             const { a, b } = this.swapSelection;
             if (!a) return '';
-            if (!b) return `Selected: ${this._shiftLabel(a)}. Tap another date to swap.`;
+            if (!b) return `Selected: ${this._shiftLabel(a)}. Tap another date to swap, or reassign this shift.`;
             if (a.shiftType !== b.shiftType) {
                 const aT = a.shiftType === 'saturday-clinic' ? 'clinic' : 'call';
                 const bT = b.shiftType === 'saturday-clinic' ? 'clinic' : 'call';
@@ -1072,6 +1136,20 @@ function app() {
             const { a, b } = this.swapSelection;
             if (!a || !b) return false;
             return a.shiftType !== b.shiftType;
+        },
+
+        /** Human-readable label for the shift being reassigned. */
+        get reassignShiftLabel() {
+            return this._shiftLabel(this.swapSelection.a);
+        },
+
+        /**
+         * Doctors available as reassignment targets.
+         * Excludes the doctor currently assigned to the selected shift.
+         */
+        get reassignableDoctors() {
+            const current = this.swapSelection.a?.doctor;
+            return this.doctors.filter(d => d.name !== current);
         },
 
         /** Label for the weekend block in the disambiguation modal. */
@@ -1251,9 +1329,15 @@ function app() {
         async applySelectedSwap() {
             const swap = this.buildSwapPayload();
             if (!swap) return;
+            const { a, b } = this.swapSelection;   // capture before clearSwapSelection() nulls them
             this.swapApplying = true;
             try {
                 await window.db.applyCallSwap(swap);
+                // Record BOTH sides in the session edit-log so the changes
+                // export captures swaps as well as reassigns.
+                const field = a.shiftType === 'saturday-clinic' ? 'clinicDoctor' : 'callDoctor';
+                this._recordEdits({ dates: a.dates, field, fromDoctor: a.doctor, toDoctor: b.doctor, kind: 'swap' });
+                this._recordEdits({ dates: b.dates, field, fromDoctor: b.doctor, toDoctor: a.doctor, kind: 'swap' });
                 this.showToast('Swap applied');
                 this.clearSwapSelection();
                 // Do NOT call refreshSchedule() here — the transaction bumped
@@ -1268,6 +1352,156 @@ function app() {
             } finally {
                 this.swapApplying = false;
             }
+        },
+
+        /**
+         * Apply a one-way reassignment of the selected shift to reassignTargetDoctor.
+         * On success: toast + clear selection (publishedAt bump triggers auto-refresh).
+         * On failure: toast + explicit resync (no publishedAt bump occurred).
+         */
+        async applyReassignment() {
+            const shift = this.swapSelection.a;
+            if (!shift || !this.reassignTargetDoctor) return;
+
+            const toDoctor = this.reassignTargetDoctor;   // capture before clearSwapSelection nulls state
+            this.reassignApplying = true;
+            try {
+                await window.db.applyCallReassign({
+                    shiftType: shift.shiftType,
+                    dates: shift.dates,
+                    fromDoctor: shift.doctor,
+                    toDoctor,
+                    editBy: this.signedInEmail,
+                });
+                this._recordEdits({
+                    dates: shift.dates,
+                    field: shift.shiftType === 'saturday-clinic' ? 'clinicDoctor' : 'callDoctor',
+                    fromDoctor: shift.doctor,
+                    toDoctor,
+                    kind: 'reassign',
+                });
+                this.showToast(`Reassigned to Dr. ${toDoctor}`);
+                this.reassignModalVisible = false;
+                this.reassignTargetDoctor = '';
+                this.clearSwapSelection();
+                // publishedAt bump triggers live listener — no manual refreshSchedule() needed
+            } catch (e) {
+                this.showToast(e.message || 'Reassignment failed. Please try again.');
+                this.reassignModalVisible = false;
+                this.reassignTargetDoctor = '';
+                this.clearSwapSelection();
+                // No publishedAt bump occurred on failure — manually resync
+                await this.refreshSchedule();
+            } finally {
+                this.reassignApplying = false;
+            }
+        },
+
+        // ================================================================
+        // CSV EXPORT (admin)
+        // ================================================================
+
+        /** Quote a CSV field if it contains comma, quote, or newline. */
+        _csvCell(v) {
+            const s = (v ?? '').toString();
+            return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+        },
+
+        /** Build a CSV string from rows of {Date, Day, Holiday, Call_Doctor, Clinic_Doctor}. */
+        _rowsToCsv(rows) {
+            const headers = ['Date', 'Day', 'Holiday', 'Call_Doctor', 'Clinic_Doctor'];
+            const lines = [headers.join(',')];
+            for (const r of rows) {
+                lines.push(headers.map(h => this._csvCell(r[h])).join(','));
+            }
+            return lines.join('\r\n') + '\r\n';
+        },
+
+        /** Derive the weekday name from an ISO date, used only as a defensive export fallback. */
+        _dayNameFromISO(iso) {
+            return new Date(iso + 'T12:00:00')
+                .toLocaleDateString('en-US', { weekday: 'long' });
+        },
+
+        /** Trigger a client-side CSV download (same Blob/anchor pattern as the ICS button). */
+        _downloadCsv(filename, csv) {
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            // Defer revoke: revoking in the same tick as click() can break the
+            // download on some Safari/iOS flows that read the Blob asynchronously.
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        },
+
+        /** Export the FULL published schedule as a standard 5-column CSV.
+         *  Fetches the entire scheduleMeta range from the server — does NOT use
+         *  the in-memory scheduleData, which only holds current-month-forward. */
+        async exportFullScheduleCsv() {
+            if (!this.scheduleMeta || !this.scheduleMeta.startDate || !this.scheduleMeta.endDate) {
+                this.showToast('No published schedule to export.');
+                return;
+            }
+            const { startDate, endDate } = this.scheduleMeta;
+            try {
+                // Server read (not cache) so the export reflects the latest
+                // committed reassignments/swaps, including any just made.
+                const entries = await window.db.getScheduleRangeFromServer(startDate, endDate);
+
+                if (!entries.length) {
+                    this.showToast('Export failed: no schedule documents returned.');
+                    return;
+                }
+                const sorted = entries.slice().sort((a, b) => a.date.localeCompare(b.date));
+                const gotStart = sorted[0].date;
+                const gotEnd = sorted[sorted.length - 1].date;
+                const expectedDocs = this._expectedDocCount();
+                if (gotStart > startDate || gotEnd < endDate || sorted.length !== expectedDocs) {
+                    this.showToast(
+                        `Export aborted — fetched ${sorted.length}/${expectedDocs} days ` +
+                        `(${gotStart}…${gotEnd}) but the published range is ` +
+                        `${startDate}…${endDate}. Try again; do not send a partial file.`
+                    );
+                    return;
+                }
+
+                const rows = sorted.map(e => ({
+                    Date: e.date,
+                    Day: e.day || this._dayNameFromISO(e.date),
+                    Holiday: e.holiday || '',
+                    Call_Doctor: e.callDoctor || '',
+                    Clinic_Doctor: e.clinicDoctor || '',
+                }));
+                this._downloadCsv(`Schedule_${startDate}_${endDate}.csv`, this._rowsToCsv(rows));
+                this.showToast(`Exported full schedule: ${rows.length} days (${startDate}…${endDate}).`);
+            } catch (e) {
+                console.error('[Export] Full schedule export failed:', e);
+                this.showToast('Export failed — could not read the full schedule. Try again.');
+            }
+        },
+
+        /** Export only this session's changes as a CSV (one row per changed date). */
+        exportChangesCsv() {
+            if (this.editLog.length === 0) { this.showToast('No changes made this session.'); return; }
+            // Group log entries by date; each row shows the date's CURRENT state.
+            const dates = [...new Set(this.editLog.map(e => e.date))].sort();
+            const rows = dates.map(date => {
+                const e = this.scheduleData[date] || {};
+                return {
+                    Date: date,
+                    Day: e.day || this._dayNameFromISO(date),
+                    Holiday: e.holiday || '',
+                    Call_Doctor: e.callDoctor || '',
+                    Clinic_Doctor: e.clinicDoctor || '',
+                };
+            });
+            this._downloadCsv(`Schedule_changes_${dates[0]}_${dates[dates.length - 1]}.csv`,
+                              this._rowsToCsv(rows));
+            this.showToast(`Exported ${rows.length} changed day(s) to CSV.`);
         },
 
         // ================================================================

@@ -28,6 +28,71 @@ const MOCK_PASSWORD = "test";
 const STAFF_EMAIL = 'sapan.patel+wfpstaff@gmail.com';
 
 /**
+ * Validate and normalize a reassignment payload (shared by mock + Firebase).
+ *
+ * Performs DATA-INTEGRITY checks only — NOT domain/scheduling-rule checks.
+ * Reassignment is a deliberate override tool (see spec Non-Goals A1), so it
+ * does not enforce consecutive-day, spacing, vacation, or fairness rules.
+ *
+ * Returns { dates (sorted), field } or throws a user-readable Error.
+ */
+function validateReassignPayload(payload) {
+    const allowedTypes = ['single-call', 'weekend-block', 'saturday-clinic'];
+    const closedValues = ['', 'Closed', 'ERROR'];
+    const { shiftType, fromDoctor, toDoctor } = payload || {};
+
+    if (!allowedTypes.includes(shiftType))
+        throw new Error('Invalid reassignment type.');
+    if (!Array.isArray(payload?.dates))
+        throw new Error('Reassignment dates are required.');
+    if (!fromDoctor || !toDoctor)
+        throw new Error('Both fromDoctor and toDoctor are required.');
+    if (closedValues.includes(fromDoctor) || closedValues.includes(toDoctor))
+        throw new Error('Cannot reassign closed or unassigned shifts.');
+    if (fromDoctor === toDoctor)
+        throw new Error('Cannot reassign a shift to the same doctor.');
+
+    const dates = [...payload.dates].sort();
+    const iso = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
+    if (dates.some(d => typeof d !== 'string' || !iso.test(d)))
+        throw new Error('Reassignment dates must be valid ISO dates.');
+    if (new Set(dates).size !== dates.length)
+        throw new Error('Reassignment dates cannot contain duplicates.');
+
+    if (shiftType === 'weekend-block') {
+        if (dates.length !== 3)
+            throw new Error('Weekend reassignment must cover exactly three dates.');
+        const d0 = new Date(dates[0] + 'T12:00:00');
+        const d1 = new Date(dates[1] + 'T12:00:00');
+        const d2 = new Date(dates[2] + 'T12:00:00');
+        // Do NOT use millisecond deltas to test consecutiveness — local-time
+        // getTime() spans are not a constant 86,400,000 ms across a DST
+        // transition (e.g. Fri Oct 30 -> Sun Nov 1, 2026 crosses the US
+        // fall-back, making one day 25h). Compare by advancing calendar dates.
+        const nextISO = (isoStr) => {
+            const dt = new Date(isoStr + 'T12:00:00');   // local noon anchor
+            dt.setDate(dt.getDate() + 1);                // calendar-correct across DST
+            const y = dt.getFullYear();
+            const m = String(dt.getMonth() + 1).padStart(2, '0');
+            const day = String(dt.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        };
+        if (d0.getDay() !== 5 ||
+            d1.getDay() !== 6 ||
+            d2.getDay() !== 0 ||
+            nextISO(dates[0]) !== dates[1] ||
+            nextISO(dates[1]) !== dates[2]) {
+            throw new Error('Weekend reassignment must be a consecutive Friday-Sunday block.');
+        }
+    } else if (dates.length !== 1) {
+        throw new Error('Single-shift reassignment must cover exactly one date.');
+    }
+
+    const field = shiftType === 'saturday-clinic' ? 'clinicDoctor' : 'callDoctor';
+    return { dates, field };
+}
+
+/**
  * Generate mock schedule data for July 2026.
  * Rotates through all 10 doctors for call assignments.
  * Saturdays get clinic assignments from a separate rotation.
@@ -233,6 +298,47 @@ function createMockDb() {
             _metaCallbacks.forEach(cb => cb({ ..._scheduleMeta }));
         },
 
+        // --- Reassign (one-way override) ---
+        async applyCallReassign(payload) {
+            const { fromDoctor, toDoctor, editBy } = payload;
+            const { dates, field } = validateReassignPayload(payload);
+
+            if (!MOCK_DOCTORS.some(d => d.name === toDoctor)) {
+                throw new Error(`Dr. ${toDoctor} is not in the doctor roster.`);
+            }
+
+            // --- Optimistic lock: verify each date still shows fromDoctor ---
+            for (const d of dates) {
+                if (!_schedule[d])
+                    throw new Error(`No published schedule entry exists for ${d}.`);
+                const cur = _schedule[d][field];
+                if (cur !== fromDoctor) throw new Error(
+                    `Schedule changed — ${d} now shows Dr. ${cur || '(none)'}, ` +
+                    `expected Dr. ${fromDoctor}.`
+                );
+            }
+
+            // --- Apply (with edit-provenance stamp) ---
+            const now = new Date();
+            for (const d of dates) {
+                _schedule[d] = {
+                    ..._schedule[d],
+                    [field]: toDoctor,
+                    previousDoctor: fromDoctor,
+                    lastEditBy: editBy || '(unknown)',
+                    lastEditAt: now,
+                    lastEditType: 'reassign',
+                };
+            }
+
+            // --- Bump publishedAt (same pattern as applyCallSwap) ---
+            const prevMs = _scheduleMeta.publishedAt instanceof Date
+                ? _scheduleMeta.publishedAt.getTime()
+                : new Date(_scheduleMeta.publishedAt).getTime();
+            _scheduleMeta = { ..._scheduleMeta, publishedAt: new Date(prevMs + 1000) };
+            _metaCallbacks.forEach(cb => cb({ ..._scheduleMeta }));
+        },
+
         // --- Firestore ---
         async getDoctors() {
             return MOCK_DOCTORS.map(d => ({ name: d.name, email: d.email, order: d.order }));
@@ -410,6 +516,61 @@ function createFirestoreDb(db, auth) {
             } catch (e) {
                 if (e.code === 'unavailable' || e.code === 'failed-precondition') {
                     throw new Error('Connection lost — swap was not applied. Reconnect and try again.');
+                }
+                throw e;
+            }
+        },
+
+        // --- Reassign (one-way override) ---
+        async applyCallReassign(payload) {
+            const { fromDoctor, toDoctor, editBy } = payload;
+            const { dates, field } = validateReassignPayload(payload);
+            const { runTransaction, doc: fsDoc, serverTimestamp } = await fs();
+
+            // No pre-transaction getDoc on /doctors/{toDoctor}: the target always
+            // comes from the roster-sourced dropdown, and Firestore security rules
+            // are the authoritative guard against unknown doctors. A pre-check
+            // would add a round-trip and is still subject to TOCTOU.
+
+            try {
+                await runTransaction(db, async (tx) => {
+                    const refs = dates.map(d => fsDoc(db, 'schedule', d));
+                    const snaps = await Promise.all(refs.map(r => tx.get(r)));
+
+                    // Existence check
+                    snaps.forEach((snap, i) => {
+                        if (!snap.exists())
+                            throw new Error(`No published schedule entry exists for ${dates[i]}.`);
+                    });
+
+                    // Optimistic lock
+                    snaps.forEach((snap, i) => {
+                        const cur = snap.data()[field];
+                        if (cur !== fromDoctor) throw new Error(
+                            `Schedule changed — ${dates[i]} now shows ` +
+                            `Dr. ${cur || '(none)'}, expected Dr. ${fromDoctor}.`
+                        );
+                    });
+
+                    // Write toDoctor + edit-provenance stamp to all dates
+                    dates.forEach(d =>
+                        tx.update(fsDoc(db, 'schedule', d), {
+                            [field]: toDoctor,
+                            previousDoctor: fromDoctor,
+                            lastEditBy: editBy || '(unknown)',
+                            lastEditAt: serverTimestamp(),
+                            lastEditType: 'reassign',
+                        })
+                    );
+
+                    // Bump publishedAt — triggers onScheduleMetaChange in all open sessions
+                    tx.update(fsDoc(db, 'scheduleMeta', 'current'), {
+                        publishedAt: serverTimestamp(),
+                    });
+                });
+            } catch (e) {
+                if (e.code === 'unavailable' || e.code === 'failed-precondition') {
+                    throw new Error('Connection lost — reassignment was not applied. Reconnect and try again.');
                 }
                 throw e;
             }
