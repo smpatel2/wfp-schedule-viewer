@@ -189,17 +189,26 @@ function app() {
         reassignTargetDoctor: '',
         reassignApplying: false,
 
-        // --- Edit provenance + session edit-log ---
+        // --- Edit provenance ---
         signedInEmail: '',   // captured from Firebase Auth user in onAuthChanged
-        editLog: [],         // session-only record of swaps/reassigns made this session
+
+        // --- Permanent Schedule History (admin only) ---
+        historyModalVisible: false,
+        historyLoading: false,
+        historyArchives: [],
+        selectedHistoryArchiveId: '',
+        selectedHistoryChanges: [],
+        historyError: '',
+        changesExporting: false,
 
         // --- Holidays Modal ---
         holidaysModalVisible: false,
 
-        // --- Disambiguation Modal ---
+        // --- Shared Promise Modal (disambiguation + edit warnings) ---
         modalVisible: false,
-        modalType: null,          // 'clinic-or-call' | 'block-or-single'
+        modalType: null,          // includes disambiguation, same-day-conflict, and past-date
         modalBlockInfo: null,     // { dates, doctor } for block-or-single
+        modalConflicts: [],       // authoritative conflicts returned by the transaction
         _modalResolve: null,
 
         // --- Toast ---
@@ -255,8 +264,14 @@ function app() {
                     alpine.reassignModalVisible = false;
                     alpine.reassignTargetDoctor = '';
                     alpine.reassignApplying = false;
-                    alpine.editLog = [];
                     alpine.signedInEmail = '';
+                    alpine.historyModalVisible = false;
+                    alpine.historyLoading = false;
+                    alpine.historyArchives = [];
+                    alpine.selectedHistoryArchiveId = '';
+                    alpine.selectedHistoryChanges = [];
+                    alpine.historyError = '';
+                    alpine.changesExporting = false;
                     alpine.holidaysModalVisible = false;
                     document.body.classList.remove('edit-mode');
                     sessionStorage.removeItem('schedule_viewer_doctor');
@@ -402,8 +417,14 @@ function app() {
             this.reassignModalVisible = false;
             this.reassignTargetDoctor = '';
             this.reassignApplying = false;
-            this.editLog = [];
             this.signedInEmail = '';
+            this.historyModalVisible = false;
+            this.historyLoading = false;
+            this.historyArchives = [];
+            this.selectedHistoryArchiveId = '';
+            this.selectedHistoryChanges = [];
+            this.historyError = '';
+            this.changesExporting = false;
             document.body.classList.remove('edit-mode');
             await window.db.signOut();
             this.password = '';
@@ -1051,8 +1072,6 @@ function app() {
                     el.classList.remove('fc-day-selected-a', 'fc-day-selected-b');
                 });
             this.swapSelection = { a: null, b: null };
-            // Reset reassign modal/selection state (NOT editLog/signedInEmail —
-            // those are session-scoped and only reset on sign-out).
             this.reassignModalVisible = false;
             this.reassignTargetDoctor = '';
             this.reassignApplying = false;
@@ -1071,29 +1090,6 @@ function app() {
             this.reassignTargetDoctor = '';
         },
 
-        /**
-         * Record schedule edits in the session log (collapses re-edits by date+field).
-         * @param {{dates:string[], field:string, fromDoctor:string, toDoctor:string, kind:string}} change
-         */
-        _recordEdits({ dates, field, fromDoctor, toDoctor, kind }) {
-            for (const date of dates) {
-                const key = `${date}|${field}`;
-                const existing = this.editLog.find(e => e.key === key);
-                if (existing) {
-                    // Re-edit of the same slot: keep the ORIGINAL fromDoctor, update toDoctor.
-                    existing.toDoctor = toDoctor;
-                    existing.kind = kind;
-                    existing.at = new Date().toISOString();
-                } else {
-                    this.editLog.push({
-                        key, date, field, fromDoctor, toDoctor, kind,
-                        at: new Date().toISOString(),
-                    });
-                }
-            }
-            // Drop net-zero edits (slot returned to its original doctor).
-            this.editLog = this.editLog.filter(e => e.fromDoctor !== e.toDoctor);
-        },
 
         _highlightShift(shift, cls) {
             for (const dateStr of shift.dates) {
@@ -1170,6 +1166,7 @@ function app() {
             return new Promise(resolve => {
                 this.modalType = 'clinic-or-call';
                 this.modalBlockInfo = null;
+                this.modalConflicts = [];
                 this.modalVisible = true;
                 this._modalResolve = resolve;
             });
@@ -1180,9 +1177,81 @@ function app() {
             return new Promise(resolve => {
                 this.modalType = 'block-or-single';
                 this.modalBlockInfo = block;
+                this.modalConflicts = [];
                 this.modalVisible = true;
                 this._modalResolve = resolve;
             });
+        },
+
+        /**
+         * Warn that the proposed edit gives a doctor call and clinic duty on
+         * the same date. Returns true to retry with the explicit override,
+         * otherwise false. The original selection remains untouched.
+         */
+        askSameDayConflict(conflicts) {
+            return new Promise(resolve => {
+                this.modalType = 'same-day-conflict';
+                this.modalBlockInfo = null;
+                this.modalConflicts = Array.isArray(conflicts)
+                    ? conflicts.map(conflict => ({ ...conflict }))
+                    : [];
+                this.modalVisible = true;
+                this._modalResolve = resolve;
+            });
+        },
+
+        /** Human-readable rows for the same-day conflict warning. */
+
+        /** Warn before deliberately selecting a shift entirely in the past. */
+        askPastDate(shift) {
+            return new Promise(resolve => {
+                this.modalType = 'past-date-warning';
+                this.modalBlockInfo = {
+                    ...shift,
+                    dates: Array.isArray(shift?.dates) ? [...shift.dates] : [],
+                };
+                this.modalConflicts = [];
+                this.modalVisible = true;
+                this._modalResolve = resolve;
+            });
+        },
+
+        get pastDateWarningLabel() {
+            return this.modalBlockInfo
+                ? this._shiftLabel(this.modalBlockInfo)
+                : 'This shift';
+        },
+
+        async _confirmPastShiftSelection(shift) {
+            const { isFullyPastShift } = await import(
+                './history-helpers.mjs?v=14'
+            );
+            if (!isFullyPastShift(shift, this.todayISO)) {
+                return true;
+            }
+            return !!(await this.askPastDate(shift));
+        },
+        get sameDayConflictRows() {
+            const roleLabel = role => role === 'call' || role === 'callDoctor'
+                ? 'on-call'
+                : role === 'clinic' || role === 'clinicDoctor'
+                    ? 'clinic'
+                    : String(role || 'another');
+            const dateLabel = date => {
+                const parsed = new Date(String(date) + 'T12:00:00');
+                return Number.isNaN(parsed.getTime())
+                    ? String(date || 'Unknown date')
+                    : parsed.toLocaleDateString('en-US', {
+                        weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+                    });
+            };
+
+            return this.modalConflicts.map((conflict, index) => ({
+                key: [conflict.date || 'date', conflict.doctor || 'doctor', index].join('|'),
+                text: 'Dr. ' + (conflict.doctor || 'Unknown') + ' on ' + dateLabel(conflict.date) + ': '
+                    + roleLabel(conflict.incomingRole) + ' and '
+                    + roleLabel(conflict.existingRole) + ' duties.',
+            }));
         },
 
         /** Called by modal buttons. `choice` is the answer or null (cancel). */
@@ -1192,7 +1261,28 @@ function app() {
             this._modalResolve = null;
             this.modalType = null;
             this.modalBlockInfo = null;
+            this.modalConflicts = [];
             if (resolve) resolve(choice);
+        },
+
+        /**
+         * Make the required first attempt without a same-day override. Only
+         * the typed conflict error opens the warning; all other failures pass
+         * through to the existing generic failure/resync path.
+         */
+        async _applyWithSameDayConfirmation(applyChange, capturedPayload) {
+            try {
+                await applyChange({ ...capturedPayload, allowSameDayConflict: false });
+                return true;
+            } catch (error) {
+                if (error?.code !== 'same-day-conflict') throw error;
+
+                const confirmed = await this.askSameDayConflict(error.conflicts);
+                if (!confirmed) return false;
+
+                await applyChange({ ...capturedPayload, allowSameDayConflict: true });
+                return true;
+            }
         },
 
         // ================================================================
@@ -1276,6 +1366,7 @@ function app() {
                 throw e;
             }
             if (!shift) return; // user cancelled modal — do nothing
+            if (!(await this._confirmPastShiftSelection(shift))) return;
 
             this.clearSwapSelection();
             this.swapSelection = { a: shift, b: null };
@@ -1297,6 +1388,7 @@ function app() {
                 throw e;
             }
             if (!shift) return;
+            if (!(await this._confirmPastShiftSelection(shift))) return;
 
             // Reject shift-type mismatch immediately (show inline via swapConfirmText too)
             if (shift.shiftType !== this.swapSelection.a.shiftType) {
@@ -1319,25 +1411,25 @@ function app() {
             if (!a || !b) return null;
             return {
                 shiftType: a.shiftType,
-                datesA: a.dates,
+                datesA: [...a.dates],
                 doctorA: a.doctor,
-                datesB: b.dates,
+                datesB: [...b.dates],
                 doctorB: b.doctor,
+                editBy: this.signedInEmail,
             };
         },
 
         async applySelectedSwap() {
             const swap = this.buildSwapPayload();
             if (!swap) return;
-            const { a, b } = this.swapSelection;   // capture before clearSwapSelection() nulls them
             this.swapApplying = true;
             try {
-                await window.db.applyCallSwap(swap);
-                // Record BOTH sides in the session edit-log so the changes
-                // export captures swaps as well as reassigns.
-                const field = a.shiftType === 'saturday-clinic' ? 'clinicDoctor' : 'callDoctor';
-                this._recordEdits({ dates: a.dates, field, fromDoctor: a.doctor, toDoctor: b.doctor, kind: 'swap' });
-                this._recordEdits({ dates: b.dates, field, fromDoctor: b.doctor, toDoctor: a.doctor, kind: 'swap' });
+                const applied = await this._applyWithSameDayConfirmation(
+                    payload => window.db.applyCallSwap(payload),
+                    swap,
+                );
+                if (!applied) return;
+
                 this.showToast('Swap applied');
                 this.clearSwapSelection();
                 // Do NOT call refreshSchedule() here — the transaction bumped
@@ -1364,37 +1456,209 @@ function app() {
             if (!shift || !this.reassignTargetDoctor) return;
 
             const toDoctor = this.reassignTargetDoctor;   // capture before clearSwapSelection nulls state
+            const reassign = {
+                shiftType: shift.shiftType,
+                dates: [...shift.dates],
+                fromDoctor: shift.doctor,
+                toDoctor,
+                editBy: this.signedInEmail,
+            };
             this.reassignApplying = true;
             try {
-                await window.db.applyCallReassign({
-                    shiftType: shift.shiftType,
-                    dates: shift.dates,
-                    fromDoctor: shift.doctor,
-                    toDoctor,
-                    editBy: this.signedInEmail,
-                });
-                this._recordEdits({
-                    dates: shift.dates,
-                    field: shift.shiftType === 'saturday-clinic' ? 'clinicDoctor' : 'callDoctor',
-                    fromDoctor: shift.doctor,
-                    toDoctor,
-                    kind: 'reassign',
-                });
+                const applied = await this._applyWithSameDayConfirmation(
+                    payload => window.db.applyCallReassign(payload),
+                    reassign,
+                );
+                if (!applied) return;
+
                 this.showToast(`Reassigned to Dr. ${toDoctor}`);
                 this.reassignModalVisible = false;
                 this.reassignTargetDoctor = '';
                 this.clearSwapSelection();
-                // publishedAt bump triggers live listener — no manual refreshSchedule() needed
+                // publishedAt bump triggers live listener; no manual refresh needed
             } catch (e) {
                 this.showToast(e.message || 'Reassignment failed. Please try again.');
                 this.reassignModalVisible = false;
                 this.reassignTargetDoctor = '';
                 this.clearSwapSelection();
-                // No publishedAt bump occurred on failure — manually resync
+                // No metadata bump occurred on failure, so resync explicitly.
                 await this.refreshSchedule();
             } finally {
                 this.reassignApplying = false;
             }
+        },
+
+        // ================================================================
+        // PERMANENT SCHEDULE HISTORY (admin)
+        // ================================================================
+
+        get selectedHistoryArchive() {
+            return this.historyArchives.find(
+                archive => archive.id === this.selectedHistoryArchiveId
+            ) || null;
+        },
+
+        formatArchiveDateRange(archive) {
+            if (!archive?.startDate || !archive?.endDate) return '';
+            return this.formatDate(archive.startDate) + ' - '
+                + this.formatDate(archive.endDate);
+        },
+
+        async openHistoryModal() {
+            if (!this.adminMode) return;
+            this.historyModalVisible = true;
+            this.historyLoading = true;
+            this.historyError = '';
+            try {
+                this.historyArchives = await window.db.getScheduleArchives();
+                if (!this.historyArchives.length) {
+                    this.selectedHistoryArchiveId = '';
+                    this.selectedHistoryChanges = [];
+                    this.historyError = 'No schedule history is available.';
+                    return;
+                }
+                const activeId = this.scheduleMeta?.activeArchiveId;
+                const selectedStillExists = this.historyArchives.some(
+                    archive => archive.id === this.selectedHistoryArchiveId
+                );
+                if (!selectedStillExists) {
+                    const active = this.historyArchives.find(
+                        archive => archive.id === activeId
+                    );
+                    this.selectedHistoryArchiveId =
+                        (active || this.historyArchives[0]).id;
+                }
+                await this.loadSelectedHistoryArchive();
+            } catch (error) {
+                console.error('[History] Failed to load archives:', error);
+                this.historyError = 'Schedule history could not be loaded. Try again.';
+            } finally {
+                this.historyLoading = false;
+            }
+        },
+
+        closeHistoryModal() {
+            this.historyModalVisible = false;
+            this.historyError = '';
+        },
+
+        async loadSelectedHistoryArchive() {
+            const archiveId = this.selectedHistoryArchiveId;
+            if (!archiveId) {
+                this.selectedHistoryChanges = [];
+                return;
+            }
+            this.historyLoading = true;
+            this.historyError = '';
+            try {
+                const changes = await window.db.getArchiveChanges(archiveId);
+                if (this.selectedHistoryArchiveId !== archiveId) return;
+                const { formatTimelineItems } = await import(
+                    './history-helpers.mjs?v=14'
+                );
+                const items = formatTimelineItems(changes, CLINIC_TIMEZONE);
+                this.selectedHistoryChanges = items.map(item => ({
+                    ...item.change,
+                    _timelineTitle: item.title,
+                    _timelineTransitions: item.transitions,
+                }));
+            } catch (error) {
+                console.error('[History] Failed to load archive changes:', error);
+                if (this.selectedHistoryArchiveId === archiveId) {
+                    this.selectedHistoryChanges = [];
+                    this.historyError =
+                        'Changes for this schedule could not be loaded. Try again.';
+                }
+            } finally {
+                if (this.selectedHistoryArchiveId === archiveId) {
+                    this.historyLoading = false;
+                }
+            }
+        },
+
+        formatHistoryChangeHeading(change) {
+            return change?._timelineTitle || '';
+        },
+
+        formatHistoryTransitions(change) {
+            return (change?._timelineTransitions || []).map(
+                (transition, index) => ({
+                    key: (change?.id || 'change') + '|' + index + '|'
+                        + transition.before + '|' + transition.after,
+                    text: transition.text,
+                })
+            );
+        },
+
+        _scheduleRows(entries) {
+            return entries.map(entry => ({
+                Date: entry.date,
+                Day: entry.day || this._dayNameFromISO(entry.date),
+                Holiday: entry.holiday || '',
+                Call_Doctor: entry.callDoctor || '',
+                Clinic_Doctor: entry.clinicDoctor || '',
+            }));
+        },
+
+        async _downloadHistoryTarget(target) {
+            const archive = this.selectedHistoryArchive;
+            if (!archive) {
+                this.showToast('Select a schedule first.');
+                return;
+            }
+            try {
+                const {
+                    snapshotDownloadInfo,
+                    validateCompleteSchedule,
+                } = await import('./history-helpers.mjs?v=14');
+                const info = snapshotDownloadInfo(
+                    archive,
+                    this.scheduleMeta?.activeArchiveId,
+                    target,
+                );
+                if (!info.ok) {
+                    this.showToast(info.message);
+                    return;
+                }
+                const entries = info.dataSource === 'live'
+                    ? await window.db.getScheduleRangeFromServer(
+                        archive.startDate,
+                        archive.endDate,
+                    )
+                    : await window.db.getArchiveSchedule(
+                        archive.id,
+                        info.dataSource,
+                    );
+                const checked = validateCompleteSchedule(
+                    entries,
+                    archive,
+                    info.dataSource === 'final' ? 'final' : info.dataSource,
+                );
+                if (!checked.ok) {
+                    this.showToast(checked.message, { duration: 8000 });
+                    return;
+                }
+                this._downloadCsv(
+                    info.filename,
+                    this._rowsToCsv(this._scheduleRows(checked.entries)),
+                );
+                this.showToast(info.label + ' downloaded.');
+            } catch (error) {
+                console.error('[History] Snapshot download failed:', error);
+                this.showToast('Download failed. Try again.');
+            }
+        },
+
+        downloadHistoryBaseline() {
+            return this._downloadHistoryTarget('original');
+        },
+
+        downloadHistoryCurrentOrFinal() {
+            const archive = this.selectedHistoryArchive;
+            const target = archive?.id === this.scheduleMeta?.activeArchiveId
+                ? 'current'
+                : 'final';
+            return this._downloadHistoryTarget(target);
         },
 
         // ================================================================
@@ -1442,68 +1706,113 @@ function app() {
          *  Fetches the entire scheduleMeta range from the server — does NOT use
          *  the in-memory scheduleData, which only holds current-month-forward. */
         async exportFullScheduleCsv() {
-            if (!this.scheduleMeta || !this.scheduleMeta.startDate || !this.scheduleMeta.endDate) {
+            if (!this.scheduleMeta?.startDate || !this.scheduleMeta?.endDate) {
                 this.showToast('No published schedule to export.');
                 return;
             }
             const { startDate, endDate } = this.scheduleMeta;
             try {
-                // Server read (not cache) so the export reflects the latest
-                // committed reassignments/swaps, including any just made.
                 const entries = await window.db.getScheduleRangeFromServer(startDate, endDate);
-
-                if (!entries.length) {
-                    this.showToast('Export failed: no schedule documents returned.');
+                const { validateCompleteSchedule } = await import(
+                    './history-helpers.mjs?v=14'
+                );
+                const checked = validateCompleteSchedule(
+                    entries,
+                    this.scheduleMeta,
+                    'current',
+                );
+                if (!checked.ok) {
+                    this.showToast(checked.message, { duration: 8000 });
                     return;
                 }
-                const sorted = entries.slice().sort((a, b) => a.date.localeCompare(b.date));
-                const gotStart = sorted[0].date;
-                const gotEnd = sorted[sorted.length - 1].date;
-                const expectedDocs = this._expectedDocCount();
-                if (gotStart > startDate || gotEnd < endDate || sorted.length !== expectedDocs) {
-                    this.showToast(
-                        `Export aborted — fetched ${sorted.length}/${expectedDocs} days ` +
-                        `(${gotStart}…${gotEnd}) but the published range is ` +
-                        `${startDate}…${endDate}. Try again; do not send a partial file.`
-                    );
-                    return;
-                }
-
-                const rows = sorted.map(e => ({
-                    Date: e.date,
-                    Day: e.day || this._dayNameFromISO(e.date),
-                    Holiday: e.holiday || '',
-                    Call_Doctor: e.callDoctor || '',
-                    Clinic_Doctor: e.clinicDoctor || '',
-                }));
-                this._downloadCsv(`Schedule_${startDate}_${endDate}.csv`, this._rowsToCsv(rows));
-                this.showToast(`Exported full schedule: ${rows.length} days (${startDate}…${endDate}).`);
+                const rows = this._scheduleRows(checked.entries);
+                this._downloadCsv(
+                    'Schedule_' + startDate + '_' + endDate + '_CURRENT.csv',
+                    this._rowsToCsv(rows),
+                );
+                this.showToast(
+                    'Exported current schedule: ' + rows.length + ' days '
+                    + '(' + startDate + '…' + endDate + ').'
+                );
             } catch (e) {
                 console.error('[Export] Full schedule export failed:', e);
                 this.showToast('Export failed — could not read the full schedule. Try again.');
             }
         },
 
-        /** Export only this session's changes as a CSV (one row per changed date). */
-        exportChangesCsv() {
-            if (this.editLog.length === 0) { this.showToast('No changes made this session.'); return; }
-            // Group log entries by date; each row shows the date's CURRENT state.
-            const dates = [...new Set(this.editLog.map(e => e.date))].sort();
-            const rows = dates.map(date => {
-                const e = this.scheduleData[date] || {};
-                return {
-                    Date: date,
-                    Day: e.day || this._dayNameFromISO(date),
-                    Holiday: e.holiday || '',
-                    Call_Doctor: e.callDoctor || '',
-                    Clinic_Doctor: e.clinicDoctor || '',
-                };
-            });
-            this._downloadCsv(`Schedule_changes_${dates[0]}_${dates[dates.length - 1]}.csv`,
-                              this._rowsToCsv(rows));
-            this.showToast(`Exported ${rows.length} changed day(s) to CSV.`);
-        },
+        /**
+         * Export every permanently changed date for the selected archive,
+         * collapsed to one current/final row per affected date.
+         */
+        async exportChangesCsv() {
+            if (this.changesExporting) return;
+            this.changesExporting = true;
+            try {
+                if (!this.historyArchives.length) {
+                    this.historyArchives = await window.db.getScheduleArchives();
+                }
+                if (!this.historyArchives.length) {
+                    this.showToast('No published schedule history is available.');
+                    return;
+                }
 
+                let archive = this.selectedHistoryArchive;
+                if (!archive) {
+                    const activeId = this.scheduleMeta?.activeArchiveId;
+                    archive = this.historyArchives.find(
+                        item => item.id === activeId
+                    ) || this.historyArchives[0];
+                    this.selectedHistoryArchiveId = archive.id;
+                }
+
+                const changes = await window.db.getArchiveChanges(archive.id);
+                if (!changes.length) {
+                    this.showToast('No recorded changes for this schedule.');
+                    return;
+                }
+
+                const active = archive.id === this.scheduleMeta?.activeArchiveId;
+                const entries = active
+                    ? await window.db.getScheduleRangeFromServer(
+                        archive.startDate,
+                        archive.endDate,
+                    )
+                    : await window.db.getArchiveSchedule(archive.id, 'final');
+                const {
+                    buildChangedRows,
+                    validateCompleteSchedule,
+                } = await import('./history-helpers.mjs?v=14');
+                const checked = validateCompleteSchedule(
+                    entries,
+                    archive,
+                    active ? 'current' : 'final',
+                );
+                if (!checked.ok) {
+                    this.showToast(checked.message, { duration: 8000 });
+                    return;
+                }
+                const changed = buildChangedRows(changes, checked.entries);
+                if (!changed.ok) {
+                    this.showToast(changed.message, { duration: 8000 });
+                    return;
+                }
+
+                this._downloadCsv(
+                    'Schedule_' + archive.startDate + '_' + archive.endDate
+                        + '_CHANGES.csv',
+                    this._rowsToCsv(changed.rows),
+                );
+                this.showToast(
+                    'Exported ' + changed.rows.length
+                        + ' permanently changed day(s) to CSV.'
+                );
+            } catch (error) {
+                console.error('[History] Changes export failed:', error);
+                this.showToast('Changes export failed. Try again.');
+            } finally {
+                this.changesExporting = false;
+            }
+        },
         // ================================================================
         // TOAST
         // ================================================================

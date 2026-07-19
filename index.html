@@ -20,7 +20,7 @@
 
     <!-- Firebase init (with mock fallback) -->
     <script type="module">
-        import { initDb } from "./js/firebase-init.js?v=12";
+        import { initDb } from "./js/firebase-init.js?v=14";
         window._dbReady = initDb().then(db => { window.db = db; return db; });
     </script>
 
@@ -29,7 +29,7 @@
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 
     <!-- App styles -->
-    <link rel="stylesheet" href="css/styles.css?v=12">
+    <link rel="stylesheet" href="css/styles.css?v=14">
 
     <!-- Service Worker registration -->
     <script>
@@ -300,9 +300,9 @@
                 </button>
             </div>
 
-            <!-- ========== ADMIN EXPORT BUTTONS (admin edit mode only) ========== -->
+            <!-- ========== ADMIN HISTORY AND EXPORT BUTTONS ========== -->
             <div class="calendar-actions admin-export-actions"
-                 x-show="adminMode && editMode"
+                 x-show="adminMode"
                  x-cloak>
                 <button class="btn btn-secondary"
                         @click="exportFullScheduleCsv()">
@@ -310,10 +310,13 @@
                 </button>
                 <button class="btn btn-secondary"
                         @click="exportChangesCsv()"
-                        :disabled="editLog.length === 0">
-                    <span x-text="editLog.length
-                        ? `Export This Session's Changes (${editLog.length})`
-                        : 'No changes this session'"></span>
+                        :disabled="changesExporting">
+                    <span x-show="!changesExporting">Export Changes (CSV)</span>
+                    <span x-show="changesExporting" x-cloak>Preparing&hellip;</span>
+                </button>
+                <button class="btn btn-secondary"
+                        @click="openHistoryModal()">
+                    <span>Schedule History</span>
                 </button>
             </div>
 
@@ -395,6 +398,7 @@
     <div class="modal-overlay"
          x-show="modalVisible"
          x-cloak
+         :style="['same-day-conflict', 'past-date-warning'].includes(modalType) ? 'z-index: 320;' : ''"
          @click.self="dismissModal(null)">
         <div class="modal-card">
 
@@ -425,6 +429,42 @@
                         </button>
                     </div>
                     <button class="modal-cancel-link" @click="dismissModal(null)">Cancel</button>
+                </div>
+            </template>
+
+            <!-- Authoritative same-day call/clinic conflict warning -->
+            <template x-if="modalType === 'same-day-conflict'">
+                <div>
+                    <div class="modal-title">Same-day assignment warning</div>
+                    <div class="modal-body">
+                        <p style="margin: 0 0 0.75rem;">
+                            This change would give a doctor both on-call and clinic duties on the same day.
+                        </p>
+                        <ul style="margin: 0; padding-left: 1.25rem;">
+                            <template x-for="row in sameDayConflictRows" :key="row.key">
+                                <li x-text="row.text" style="margin-bottom: 0.35rem;"></li>
+                            </template>
+                        </ul>
+                    </div>
+                    <div class="modal-actions">
+                        <button class="btn btn-secondary" @click="dismissModal(false)">Cancel</button>
+                        <button class="btn btn-primary" @click="dismissModal(true)">Apply Anyway</button>
+                    </div>
+                </div>
+            </template>
+
+            <!-- Deliberate confirmation before editing a fully elapsed shift -->
+            <template x-if="modalType === 'past-date-warning'">
+                <div>
+                    <div class="modal-title">Past-date edit warning</div>
+                    <div class="modal-body">
+                        Every date in this shift has already passed. Continue only if
+                        this historical schedule change is intentional.
+                    </div>
+                    <div class="modal-actions">
+                        <button class="btn btn-secondary" @click="dismissModal(false)">Cancel</button>
+                        <button class="btn btn-primary" @click="dismissModal(true)">Edit Past Date</button>
+                    </div>
                 </div>
             </template>
 
@@ -497,10 +537,107 @@
         </div>
     </div>
 
+    <!-- ========== SCHEDULE HISTORY MODAL (admin only) ========== -->
+    <div class="modal-overlay history-modal-overlay"
+         x-show="adminMode && historyModalVisible"
+         x-cloak
+         @click.self="closeHistoryModal()"
+         @keydown.escape.window="if (historyModalVisible) closeHistoryModal()">
+        <div class="modal-card history-modal-card">
+            <div class="history-modal-header">
+                <div class="modal-title">Schedule History</div>
+                <button class="history-close-button"
+                        type="button"
+                        aria-label="Close schedule history"
+                        @click="closeHistoryModal()">&times;</button>
+            </div>
+
+            <div class="history-loading" x-show="historyLoading" x-cloak>
+                Loading schedule history&hellip;
+            </div>
+
+            <div class="history-error"
+                 x-show="historyError"
+                 x-cloak
+                 x-text="historyError"></div>
+
+            <template x-if="!historyLoading && !historyError">
+                <div>
+                    <div class="form-group history-archive-picker">
+                        <label for="history-archive-select">Schedule</label>
+                        <select id="history-archive-select"
+                                x-model="selectedHistoryArchiveId"
+                                @change="loadSelectedHistoryArchive()">
+                            <template x-for="archive in historyArchives" :key="archive.id">
+                                <option :value="archive.id" x-text="archive.label"></option>
+                            </template>
+                        </select>
+                    </div>
+
+                    <template x-if="selectedHistoryArchive">
+                        <div>
+                            <div class="history-range"
+                                 x-text="formatArchiveDateRange(selectedHistoryArchive)"></div>
+
+                            <div class="history-baseline-note"
+                                 x-show="selectedHistoryArchive.source === 'migration'"
+                                 x-cloak>
+                                Snapshot at migration &mdash; original publication unavailable
+                            </div>
+
+                            <div class="history-download-actions">
+                                <button class="btn btn-secondary"
+                                        @click="downloadHistoryBaseline()">
+                                    <span x-text="selectedHistoryArchive.source === 'migration'
+                                        ? 'Download Migration Snapshot (CSV)'
+                                        : 'Download Original Schedule (CSV)'"></span>
+                                </button>
+                                <button class="btn btn-secondary"
+                                        @click="downloadHistoryCurrentOrFinal()">
+                                    <span x-text="scheduleMeta
+                                            && selectedHistoryArchive.id === scheduleMeta.activeArchiveId
+                                        ? 'Download Current Schedule (CSV)'
+                                        : 'Download Final Schedule (CSV)'"></span>
+                                </button>
+                            </div>
+
+                            <div class="history-timeline-heading">Recorded Changes</div>
+                            <div class="history-empty"
+                                 x-show="selectedHistoryChanges.length === 0"
+                                 x-cloak>
+                                No recorded changes for this schedule.
+                            </div>
+                            <div class="history-timeline"
+                                 x-show="selectedHistoryChanges.length > 0"
+                                 x-cloak>
+                                <template x-for="change in selectedHistoryChanges" :key="change.id">
+                                    <div class="history-timeline-item">
+                                        <div class="history-change-heading"
+                                             x-text="formatHistoryChangeHeading(change)"></div>
+                                        <template x-for="transition in formatHistoryTransitions(change)"
+                                                  :key="transition.key">
+                                            <div class="history-transition" x-text="transition.text"></div>
+                                        </template>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
+                    <div class="history-empty"
+                         x-show="historyArchives.length === 0"
+                         x-cloak>
+                        No published schedule history is available.
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
     <!-- ========== TOAST ========== -->
     <div class="toast" x-show="toastVisible" x-cloak x-text="toastMessage"></div>
 
     <!-- App logic -->
-    <script src="js/app.js?v=12"></script>
+    <script src="js/app.js?v=14"></script>
 </body>
 </html>
