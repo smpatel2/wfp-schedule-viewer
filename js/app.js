@@ -1609,6 +1609,7 @@ function app() {
                 Holiday: entry.holiday || '',
                 Call_Doctor: entry.callDoctor || '',
                 Clinic_Doctor: entry.clinicDoctor || '',
+                Backup_Doctor: entry.backupDoctor || '',
             }));
         },
 
@@ -1683,9 +1684,13 @@ function app() {
             return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
         },
 
-        /** Build a CSV string from rows of {Date, Day, Holiday, Call_Doctor, Clinic_Doctor}. */
-        _rowsToCsv(rows) {
+        /** Build a CSV string from rows of {Date, Day, Holiday, Call_Doctor, Clinic_Doctor}.
+         *  Backup_Doctor is opt-in: only the live full-schedule export carries it.
+         *  Archive snapshots and change exports predate backups and stay 5-column,
+         *  which is also the shape the scheduler's backfill tool reads. */
+        _rowsToCsv(rows, includeBackup = false) {
             const headers = ['Date', 'Day', 'Holiday', 'Call_Doctor', 'Clinic_Doctor'];
+            if (includeBackup) headers.push('Backup_Doctor');
             const lines = [headers.join(',')];
             for (const r of rows) {
                 lines.push(headers.map(h => this._csvCell(r[h])).join(','));
@@ -1714,7 +1719,7 @@ function app() {
             setTimeout(() => URL.revokeObjectURL(url), 1000);
         },
 
-        /** Export the FULL published schedule as a standard 5-column CSV.
+        /** Export the FULL published schedule, adding the backup doctor column.
          *  Fetches the entire scheduleMeta range from the server — does NOT use
          *  the in-memory scheduleData, which only holds current-month-forward. */
         async exportFullScheduleCsv() {
@@ -1740,7 +1745,7 @@ function app() {
                 const rows = this._scheduleRows(checked.entries);
                 this._downloadCsv(
                     'Schedule_' + startDate + '_' + endDate + '_CURRENT.csv',
-                    this._rowsToCsv(rows),
+                    this._rowsToCsv(rows, true),
                 );
                 this.showToast(
                     'Exported current schedule: ' + rows.length + ' days '
