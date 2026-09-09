@@ -19,6 +19,9 @@ export function buildPersonalICS(entries, doctorName) {
     const dtstamp = dtstampUTC();
 
     for (const entry of entries) {
+        if (entry.backupDoctor === doctorName) {
+            eventLines.push(...buildCallEvent(entry, doctorName, dtstamp, true));
+        }
         if (entry.callDoctor === doctorName && entry.callDoctor !== 'ERROR') {
             eventLines.push(...buildCallEvent(entry, doctorName, dtstamp));
         }
@@ -33,20 +36,20 @@ export function buildPersonalICS(entries, doctorName) {
     return wrapCalendar(eventLines);
 }
 
-function buildCallEvent(entry, doctor, dtstamp) {
+function buildCallEvent(entry, doctor, dtstamp, backup = false) {
     const dt = entry.date;
     const next = isoAddDays(dt, 1);
-    let summary = 'On Call';
+    let summary = backup ? 'Backup Call' : 'On Call';
     if (entry.holiday) summary += ` (${entry.holiday})`;
 
     return [
         'BEGIN:VEVENT',
-        `UID:${icsEscape(`${dt}-CALL-${doctor}@medisched`)}`,
+        `UID:${icsEscape(`${dt}-${backup ? 'BACKUP' : 'CALL'}-${doctor}@medisched`)}`,
         `DTSTAMP:${dtstamp}`,
         `DTSTART;TZID=${TZID}:${formatLocal(dt, 17, 0)}`,
         `DTEND;TZID=${TZID}:${formatLocal(next, 8, 0)}`,
         `SUMMARY:${icsEscape(summary)}`,
-        'DESCRIPTION:On-call coverage from 5:00 PM to 8:00 AM',
+        backup ? 'DESCRIPTION:Fallback if the primary doctor cannot be reached' : 'DESCRIPTION:On-call coverage from 5:00 PM to 8:00 AM',
         'END:VEVENT',
     ];
 }

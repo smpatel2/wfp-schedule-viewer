@@ -20,7 +20,7 @@
 
     <!-- Firebase init (with mock fallback) -->
     <script type="module">
-        import { initDb } from "./js/firebase-init.js?v=14";
+        import { initDb } from "./js/firebase-init.js?v=15";
         window._dbReady = initDb().then(db => { window.db = db; return db; });
     </script>
 
@@ -218,6 +218,7 @@
                             <div class="today-card today-card-primary">
                                 <div class="today-card-label">On Call Tonight</div>
                                 <div class="today-card-doctor" x-text="'Dr. ' + todayData.callDoctor"></div>
+                                <div x-show="todayData.backupDoctor" x-text="'Backup: Dr. ' + todayData.backupDoctor"></div>
                                 <div class="today-card-date" x-text="todayDisplay"></div>
                                 <div x-show="todayData.holiday" class="today-card-holiday" x-text="todayData.holiday"></div>
                             </div>
@@ -638,6 +639,6 @@
     <div class="toast" x-show="toastVisible" x-cloak x-text="toastMessage"></div>
 
     <!-- App logic -->
-    <script src="js/app.js?v=14"></script>
+    <script src="js/app.js?v=15"></script>
 </body>
 </html>

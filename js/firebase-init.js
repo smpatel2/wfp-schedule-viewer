@@ -187,6 +187,19 @@ function createMockDb() {
         },
     };
     let _mockChangeCounter = 0;
+    const mockBackup = {
+        activeArchiveId: mockArchiveId, primaryPublishedAt: initialPublishedAt,
+        assignments: Object.fromEntries(Object.entries(_schedule).map(([date, entry]) => {
+            const index = MOCK_DOCTORS.findIndex(d => d.name === entry.callDoctor);
+            const backup = MOCK_DOCTORS[(index + 1) % MOCK_DOCTORS.length].name;
+            return [date, { primaryDoctor: entry.callDoctor, clinicDoctor: entry.clinicDoctor,
+                backupDoctor: backup }];
+        })),
+    };
+    async function decorateMockBackups(entries) {
+        const { attachBackups } = await import('./backup-helpers.mjs');
+        return attachBackups(entries, mockBackup);
+    }
     const _metaCallbacks = new Set();
 
     function _notifyAuth() {
@@ -451,14 +464,14 @@ function createMockDb() {
         },
 
         async getTodaySchedule(dateISO) {
-            return _schedule[dateISO] ? { ..._schedule[dateISO] } : null;
+            return _schedule[dateISO] ? (await decorateMockBackups([_schedule[dateISO]]))[0] : null;
         },
 
         async getScheduleRange(startDate, endDate) {
-            return Object.values(_schedule)
+            return decorateMockBackups(Object.values(_schedule)
                 .filter(s => s.date >= startDate && s.date <= endDate)
                 .map(s => ({ ...s }))
-                .sort((a, b) => a.date.localeCompare(b.date));
+                .sort((a, b) => a.date.localeCompare(b.date)));
         },
 
         async getScheduleRangeFromServer(startDate, endDate) {
@@ -468,6 +481,21 @@ function createMockDb() {
 }
 
 function createFirestoreDb(db, auth) {
+    let lastBackupId = null;
+    async function decorateWithBackups(entries) {
+        try {
+            const { doc, getDoc } = await fs();
+            const pointer = await getDoc(doc(db, 'backupMeta', 'current'));
+            const id = pointer.exists() ? pointer.data().snapshotId : null;
+            lastBackupId = id;
+            const snapshot = id ? await getDoc(doc(db, 'backupSchedules', id)) : null;
+            const { attachBackups } = await import('./backup-helpers.mjs');
+            return attachBackups(entries, snapshot?.exists() ? snapshot.data() : null);
+        } catch (error) {
+            console.warn('[Backup] Unable to load backups:', error);
+            return entries.map(entry => ({ ...entry, backupDoctor: null, backupStatus: 'unavailable' }));
+        }
+    }
     let _firestoreMod = null;
     async function fs() {
         if (!_firestoreMod) {
@@ -779,7 +807,7 @@ function createFirestoreDb(db, auth) {
             const { doc, getDoc } = await fs();
             const snap = await getDoc(doc(db, "schedule", dateISO));
             if (!snap.exists()) return null;
-            return snap.data();
+            return (await decorateWithBackups([snap.data()]))[0];
         },
 
         async getScheduleRange(startDate, endDate) {
@@ -791,7 +819,7 @@ function createFirestoreDb(db, auth) {
                 orderBy("date")
             );
             const snap = await getDocs(q);
-            return snap.docs.map(d => d.data());
+            return decorateWithBackups(snap.docs.map(d => d.data()));
         },
 
         async getScheduleRangeFromServer(startDate, endDate) {
@@ -803,7 +831,22 @@ function createFirestoreDb(db, auth) {
                 orderBy("date")
             );
             const snap = await getDocsFromServer(q);
-            return snap.docs.map(d => d.data());
+            return decorateWithBackups(snap.docs.map(d => d.data()));
+        },
+        onBackupMetaChange(callback) {
+            let unsubscribe = null;
+            let cancelled = false;
+            fs().then(({ doc, onSnapshot }) => {
+                if (cancelled) return;
+                unsubscribe = onSnapshot(doc(db, 'backupMeta', 'current'), snap => {
+                    const id = snap.exists() ? snap.data().snapshotId : null;
+                    if (id !== lastBackupId) {
+                        lastBackupId = id;
+                        callback();
+                    }
+                }, error => console.warn('[Backup] Listener unavailable:', error));
+            });
+            return () => { cancelled = true; if (unsubscribe) unsubscribe(); };
         },
     };
 }

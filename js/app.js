@@ -218,6 +218,7 @@ function app() {
 
         // --- Live Listener ---
         _metaUnsub: null,
+        _backupUnsub: null,
 
         // --- Config ---
         mockMode: false,
@@ -247,6 +248,7 @@ function app() {
                 if (!user) {
                     // Teardown live listener and edit state on sign-out
                     if (alpine._metaUnsub) { alpine._metaUnsub(); alpine._metaUnsub = null; }
+                    if (alpine._backupUnsub) { alpine._backupUnsub(); alpine._backupUnsub = null; }
                     if (alpine.calendar) { alpine.calendar.destroy(); alpine.calendar = null; }
                     alpine.authenticated = false;
                     alpine.adminMode = false;
@@ -412,6 +414,7 @@ function app() {
 
         async logout() {
             if (this._metaUnsub) { this._metaUnsub(); this._metaUnsub = null; }
+            if (this._backupUnsub) { this._backupUnsub(); this._backupUnsub = null; }
             this.editMode = false;
             this.swapSelection = { a: null, b: null };
             this.reassignModalVisible = false;
@@ -461,6 +464,7 @@ function app() {
                 const entry = this.scheduleData[dateStr];
                 const isMyDay = entry && (
                     entry.callDoctor === this.doctorName ||
+                    entry.backupDoctor === this.doctorName ||
                     entry.clinicDoctor === this.doctorName
                 );
                 cell.classList.toggle('fc-day-filtered', !isMyDay);
@@ -860,6 +864,8 @@ function app() {
          */
         _attachMetaListener() {
             if (this._metaUnsub) this._metaUnsub();
+            if (this._backupUnsub) this._backupUnsub();
+            this._backupUnsub = window.db.onBackupMetaChange?.(() => this.refreshSchedule());
             const alpine = this;
 
             this._metaUnsub = window.db.onScheduleMetaChange((meta) => {
@@ -923,6 +929,11 @@ function app() {
                 if (entry.callDoctor) {
                     const cls = this.getDoctorColorClass(entry.callDoctor);
                     html += `<div class="doctor-name-pill ${cls}">${esc(entry.callDoctor)}</div>`;
+                }
+
+                // Backup pill (only when a published backup applies to this day)
+                if (entry.backupDoctor) {
+                    html += `<div class="clinic-doctor-pill"><span class="clinic-label">Backup: </span>${esc(entry.backupDoctor)}</div>`;
                 }
 
                 // Clinic doctor (Saturdays only, skip "Closed")
@@ -1000,6 +1011,7 @@ function app() {
                         const entry = alpine.scheduleData[dateStr];
                         const isMyDay = entry && (
                             entry.callDoctor === alpine.doctorName ||
+                            entry.backupDoctor === alpine.doctorName ||
                             entry.clinicDoctor === alpine.doctorName
                         );
                         if (!isMyDay) {
