@@ -29,7 +29,7 @@
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 
     <!-- App styles -->
-    <link rel="stylesheet" href="css/styles.css?v=14">
+    <link rel="stylesheet" href="css/styles.css?v=15">
 
     <!-- Service Worker registration -->
     <script>
@@ -218,9 +218,10 @@
                             <div class="today-card today-card-primary">
                                 <div class="today-card-label">On Call Tonight</div>
                                 <div class="today-card-doctor" x-text="'Dr. ' + todayData.callDoctor"></div>
-                                <div x-show="todayData.backupDoctor" x-text="'Backup: Dr. ' + todayData.backupDoctor"></div>
                                 <div class="today-card-date" x-text="todayDisplay"></div>
                                 <div x-show="todayData.holiday" class="today-card-holiday" x-text="todayData.holiday"></div>
+                                <div class="today-card-backup" x-show="todayData.backupDoctor" x-cloak
+                                     x-text="'Backup: Dr. ' + todayData.backupDoctor"></div>
                             </div>
 
                             <!-- Secondary: Saturday card (clinic + on-call) -->

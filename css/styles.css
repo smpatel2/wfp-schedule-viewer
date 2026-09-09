@@ -542,6 +542,16 @@ main {
     opacity: 0.8;
 }
 
+/* Backup call: last line of the card, deliberately quiet. Backup is a
+   rarely used fallback, so it must not compete with the on-call name. */
+.today-card-backup {
+    font-size: 0.6875rem;
+    font-weight: 400;
+    line-height: 1.3;
+    opacity: 0.6;
+    margin-top: 0.625rem;
+}
+
 .today-card-holiday {
     display: inline-block;
     background: #470A68;

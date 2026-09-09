@@ -5,7 +5,7 @@
  * Schedule data caching is handled by Firestore's persistentLocalCache.
  */
 
-const CACHE_NAME = 'wfp-schedule-v10';
+const CACHE_NAME = 'wfp-schedule-v11';
 
 const APP_SHELL = [
     '/',
