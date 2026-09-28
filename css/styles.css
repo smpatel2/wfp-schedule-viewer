@@ -732,21 +732,34 @@ main {
     background: transparent !important;
 }
 
+/* Inset shadow (painted beneath the cell content, unlike an outline) plus
+   a little inner padding, so the ring never cuts through the pills. */
 .fc .fc-day-today .fc-daygrid-day-frame {
-    outline: 2px solid var(--sky);
-    outline-offset: -2px;
+    box-shadow: inset 0 0 0 2px var(--sky);
     background: var(--sky-10);
+    padding: 0 3px 3px;
 }
 
-/* Month title */
+/* Month title — navy on white with a short teal accent bar */
 .fc .fc-multimonth-title {
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    padding: 0.625rem 1rem;
-    background: var(--oxford);
-    color: var(--white);
+    text-align: left;
+    padding: 0.75rem 1rem 0.625rem;
+    background: var(--white);
+    color: var(--oxford);
+}
+
+.fc .fc-multimonth-title::after {
+    content: '';
+    display: block;
+    width: 2rem;
+    height: 3px;
+    margin-top: 0.3rem;
+    border-radius: var(--radius-pill);
+    background: var(--sky);
 }
 
 /* Month card */
@@ -1542,15 +1555,25 @@ body.edit-mode .fc-daygrid-day {
         padding: 1rem 1rem;
     }
 
+    /* Drop the outer grey box so month cards use the full phone width */
+    #calendar-container {
+        background: transparent;
+        border: none;
+        border-radius: 0;
+        padding: 0;
+    }
+
+    /* Stack clinic above on-call, both left-aligned with the card label */
     .saturday-split {
         flex-direction: column;
+        align-items: stretch;
         gap: 0;
     }
 
     /* Swap vertical divider to horizontal */
     .saturday-split::after {
-        left: 12.5%;
-        right: 12.5%;
+        left: 0;
+        right: 25%;
         top: 50%;
         bottom: auto;
         width: auto;
