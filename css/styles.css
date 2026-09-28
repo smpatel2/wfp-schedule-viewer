@@ -880,9 +880,9 @@ main {
 /* Backup — plain muted text under the call pill, no box. Backup is a
    rarely used fallback and must not compete with the on-call name. */
 .backup-line {
-    color: var(--text-muted);
+    color: color-mix(in srgb, var(--text-muted) 70%, white);
     font-size: 0.6875rem;
-    font-weight: 400;
+    font-weight: 300;
     line-height: 1.25;
     padding: 1px 2px 0 6px;
     white-space: nowrap;
