@@ -680,6 +680,7 @@ main {
 /* Filtered cells — hide other doctors' pills */
 .fc-day-filtered .doctor-name-pill,
 .fc-day-filtered .clinic-doctor-pill,
+.fc-day-filtered .backup-line,
 .fc-day-filtered .holiday-pill {
     display: none;
 }
@@ -793,6 +794,14 @@ main {
     margin-bottom: 0;
 }
 
+/* FullCalendar's balanced multiMonth grid absolutely positions the events
+   box and sizes rows from the page width, so on phones a busy Saturday
+   (holiday + call + backup + clinic) overflowed into the next week. Keep
+   the injected content in normal flow so the row grows to fit it. */
+.fc .fc-multimonth .fc-daygrid-day-events {
+    position: static;
+}
+
 .fc .fc-multimonth .fc-daygrid-day-top {
     flex-direction: row;
 }
@@ -841,21 +850,86 @@ main {
     margin-top: 1px;
 }
 
-/* Clinic doctor pill — slightly different styling */
+/* Clinic doctor pill — dashed outline in the doctor's color, so it reads
+   differently from the solid on-call pill and the plain backup line. */
 .clinic-doctor-pill {
-    background: color-mix(in srgb, var(--doc-color, #6B7280) 6%, transparent);
+    background: var(--white);
     color: color-mix(in srgb, var(--doc-color, #6B7280) 70%, black);
-    border: 1px solid color-mix(in srgb, var(--doc-color, #6B7280) 15%, transparent);
-    padding: 2px 6px;
+    border: 1px dashed color-mix(in srgb, var(--doc-color, #6B7280) 65%, transparent);
+    padding: 1px 5px;
     border-radius: 5px;
     font-size: 0.75rem;
-    font-weight: 500;
-    font-style: italic;
+    font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     line-height: 1.3;
-    margin-top: 1px;
+    margin-top: 2px;
+}
+
+/* "CLINIC" tag inside the clinic pill (hidden on phones) */
+.clinic-label {
+    font-size: 0.5625rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    opacity: 0.75;
+    margin-right: 4px;
+}
+
+/* Backup — plain muted text under the call pill, no box. Backup is a
+   rarely used fallback and must not compete with the on-call name. */
+.backup-line {
+    color: var(--text-muted);
+    font-size: 0.6875rem;
+    font-weight: 400;
+    line-height: 1.25;
+    padding: 1px 2px 0 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Arrow marker replaces the "Backup:" label on phones */
+.backup-mark {
+    display: none;
+}
+
+/* --- The signed-in doctor's own assignments (doctor view only) --- */
+.doctor-name-pill.is-me {
+    background: color-mix(in srgb, var(--doc-color, #6B7280) 80%, black);
+    border-color: color-mix(in srgb, var(--doc-color, #6B7280) 80%, black);
+    color: var(--white);
+}
+
+.clinic-doctor-pill.is-me {
+    background: color-mix(in srgb, var(--doc-color, #6B7280) 80%, black);
+    border-color: transparent;
+    color: var(--white);
+    /* Inner dashed ring keeps the "clinic" look on a solid fill */
+    outline: 1px dashed rgba(255, 255, 255, 0.7);
+    outline-offset: -3px;
+}
+
+.backup-line.is-me {
+    background: var(--sky-15);
+    color: var(--oxford);
+    font-weight: 700;
+    border-radius: 4px;
+}
+
+/* Past days fade back so the current week stands out */
+.fc .fc-day-past .fc-daygrid-day-number,
+.fc .fc-day-past .fc-daygrid-day-events {
+    opacity: 0.45;
+}
+
+/* ...but not a past day an admin has selected for editing */
+.fc .fc-day-selected-a .fc-daygrid-day-number,
+.fc .fc-day-selected-a .fc-daygrid-day-events,
+.fc .fc-day-selected-b .fc-daygrid-day-number,
+.fc .fc-day-selected-b .fc-daygrid-day-events {
+    opacity: 1;
 }
 
 /* Holiday pill inside calendar cells */
@@ -1540,7 +1614,22 @@ body.edit-mode .fc-daygrid-day {
 
     .clinic-doctor-pill {
         font-size: 0.65rem;
-        padding: 1px 4px;
+        padding: 1px 3px;
+    }
+
+    .backup-line {
+        font-size: 0.625rem;
+        padding: 1px 1px 0 2px;
+        letter-spacing: -0.01em;
+    }
+
+    .backup-label {
+        display: none;
+    }
+
+    .backup-mark {
+        display: inline;
+        margin-right: 1px;
     }
 
     .holiday-pill {

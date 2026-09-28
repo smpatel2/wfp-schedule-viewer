@@ -916,6 +916,10 @@ function app() {
 
         buildCellHtmlCache() {
             this.cellHtmlCache = {};
+            // Highlight the signed-in doctor's own assignments (doctor view
+            // only — admin and office staff see a neutral calendar).
+            const me = (!this.adminMode && !this.staffMode) ? this.doctorName : '';
+            const mine = (name) => (me && name === me ? ' is-me' : '');
             for (const [dateStr, entry] of Object.entries(this.scheduleData)) {
                 let html = '';
 
@@ -928,18 +932,19 @@ function app() {
                 // Call doctor pill
                 if (entry.callDoctor) {
                     const cls = this.getDoctorColorClass(entry.callDoctor);
-                    html += `<div class="doctor-name-pill ${cls}">${esc(entry.callDoctor)}</div>`;
+                    html += `<div class="doctor-name-pill ${cls}${mine(entry.callDoctor)}">${esc(entry.callDoctor)}</div>`;
                 }
 
-                // Backup pill (only when a published backup applies to this day)
+                // Backup line (only when a published backup applies to this
+                // day). Plain text, no pill — backup is a rarely used fallback.
                 if (entry.backupDoctor) {
-                    html += `<div class="clinic-doctor-pill"><span class="clinic-label">Backup: </span>${esc(entry.backupDoctor)}</div>`;
+                    html += `<div class="backup-line${mine(entry.backupDoctor)}"><span class="backup-mark" aria-hidden="true">&#8627;</span><span class="backup-label">Backup: </span>${esc(entry.backupDoctor)}</div>`;
                 }
 
                 // Clinic doctor (Saturdays only, skip "Closed")
                 if (entry.clinicDoctor && entry.clinicDoctor !== 'Closed' && entry.clinicDoctor !== '') {
                     const cls = this.getDoctorColorClass(entry.clinicDoctor);
-                    html += `<div class="clinic-doctor-pill ${cls}"><span class="clinic-label">Clinic: </span>${esc(entry.clinicDoctor)}</div>`;
+                    html += `<div class="clinic-doctor-pill ${cls}${mine(entry.clinicDoctor)}"><span class="clinic-label">Clinic</span>${esc(entry.clinicDoctor)}</div>`;
                 }
 
                 this.cellHtmlCache[dateStr] = html;
@@ -974,6 +979,9 @@ function app() {
                 initialView: 'multiMonthYear',
                 initialDate: todayISO,
                 headerToolbar: false,
+                // Mock data is pinned to July 2026; align FullCalendar's
+                // "today" (ring, past-day fading, month hiding) with it.
+                ...(this.mockMode ? { now: '2026-07-08' } : {}),
                 height: 'auto',
                 multiMonthMaxColumns: 1,
                 fixedWeekCount: false,
