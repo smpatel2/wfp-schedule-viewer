@@ -85,9 +85,18 @@ function canonicalMockSnapshot(schedule) {
 }
 
 /**
+ * Mock Saturdays on/after this date use the on-call clinic format
+ * (clinicDoctor 'On-Call'; the call doctor staffs clinic), so mock mode
+ * shows both formats side by side, like the real Dec 2026 -> Jan 2027
+ * changeover.
+ */
+const MOCK_ON_CALL_CLINIC_FROM = '2026-07-18';
+
+/**
  * Generate mock schedule data for July 2026.
  * Rotates through all 10 doctors for call assignments.
- * Saturdays get clinic assignments from a separate rotation.
+ * Saturdays get clinic assignments from a separate rotation until
+ * MOCK_ON_CALL_CLINIC_FROM, then the on-call clinic format.
  */
 function generateMockSchedule() {
     const doctors = MOCK_DOCTORS.map(d => d.name);
@@ -117,7 +126,9 @@ function generateMockSchedule() {
 
         const callDoctor = doctors[callIdx % doctors.length];
         const clinicDoctor = isSaturday
-            ? doctors[clinicIdx % doctors.length]
+            ? (dateISO >= MOCK_ON_CALL_CLINIC_FROM
+                ? 'On-Call'
+                : doctors[clinicIdx % doctors.length])
             : (isSunday || holiday ? "Closed" : "");
 
         schedule[dateISO] = {

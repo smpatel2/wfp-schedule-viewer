@@ -20,7 +20,7 @@
 
     <!-- Firebase init (with mock fallback) -->
     <script type="module">
-        import { initDb } from "./js/firebase-init.js?v=15";
+        import { initDb } from "./js/firebase-init.js?v=16";
         window._dbReady = initDb().then(db => { window.db = db; return db; });
     </script>
 
@@ -29,7 +29,7 @@
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 
     <!-- App styles -->
-    <link rel="stylesheet" href="css/styles.css?v=18">
+    <link rel="stylesheet" href="css/styles.css?v=19">
 
     <!-- Service Worker registration -->
     <script>
@@ -225,7 +225,15 @@
                             </div>
 
                             <!-- Secondary: Saturday card (clinic + on-call) -->
-                            <template x-if="clinicSaturdayText && clinicSaturdayText !== 'Closed'">
+                            <template x-if="clinicSaturdayText && clinicSaturdayText !== 'Closed' && saturdayClinicIsOnCall">
+                                <div class="today-card today-card-secondary">
+                                    <div class="today-card-label">Saturday</div>
+                                    <div class="saturday-role">Clinic + On Call</div>
+                                    <div class="saturday-doctor" x-text="'Dr. ' + callSaturdayText"></div>
+                                    <div class="today-card-date" x-text="saturdayDisplay"></div>
+                                </div>
+                            </template>
+                            <template x-if="clinicSaturdayText && clinicSaturdayText !== 'Closed' && !saturdayClinicIsOnCall">
                                 <div class="today-card today-card-secondary">
                                     <div class="today-card-label">Saturday</div>
                                     <div class="saturday-split">
@@ -640,6 +648,6 @@
     <div class="toast" x-show="toastVisible" x-cloak x-text="toastMessage"></div>
 
     <!-- App logic -->
-    <script src="js/app.js?v=17"></script>
+    <script src="js/app.js?v=19"></script>
 </body>
 </html>

@@ -11,6 +11,27 @@ const DOCTOR_COLORS = [
 
 const FALLBACK_COLOR = '#6B7280'; // gray-500
 
+/**
+ * clinicDoctor value meaning "the weekend on-call doctor staffs Saturday
+ * clinic" (2027+ format). Mirrors js/clinic-helpers.mjs and the Python
+ * config.CLINIC_ON_CALL_MARKER; app.js is a classic script, so the two
+ * helpers are repeated here rather than imported.
+ */
+const CLINIC_ON_CALL = 'On-Call';
+
+function isClinicOnCall(value) {
+    return typeof value === 'string'
+        && value.trim().toLowerCase() === CLINIC_ON_CALL.toLowerCase();
+}
+
+/** Doctor staffing a day's Saturday clinic (call doctor under on-call format). */
+function clinicDoctorFor(entry) {
+    if (!entry) return '';
+    return isClinicOnCall(entry.clinicDoctor)
+        ? (entry.callDoctor || '')
+        : (entry.clinicDoctor || '');
+}
+
 /** Clinic timezone for "today" calculation */
 const CLINIC_TIMEZONE = 'America/Chicago';
 
@@ -522,7 +543,7 @@ function app() {
                 const actualStart = entries[0].date;
                 const actualEnd = entries[entries.length - 1].date;
 
-                const { buildPersonalICS } = await import('./ics.js');
+                const { buildPersonalICS } = await import('./ics.js?v=2');
                 const ics = buildPersonalICS(entries, this.doctorName);
 
                 const safeName = this.doctorName.replace(/[^A-Za-z0-9_-]/g, '_');
@@ -627,15 +648,22 @@ function app() {
             return !this.todayData && this.scheduleMeta.startDate > this.todayISO;
         },
 
-        /** Clinic doctor text for the next Saturday */
-        get clinicSaturdayText() {
+        /** The Saturday entry shown on the secondary card (today or next). */
+        get saturdayEntry() {
             if (this.todayData && this.todayData.day === 'Saturday') {
-                return this.todayData.clinicDoctor || '';
+                return this.todayData;
             }
-            if (this.nextSaturdayData) {
-                return this.nextSaturdayData.clinicDoctor || '';
-            }
-            return '';
+            return this.nextSaturdayData || null;
+        },
+
+        /** Clinic doctor text for the next Saturday (call doctor in 2027+ format) */
+        get clinicSaturdayText() {
+            return clinicDoctorFor(this.saturdayEntry);
+        },
+
+        /** True when the on-call doctor also staffs that Saturday's clinic */
+        get saturdayClinicIsOnCall() {
+            return isClinicOnCall(this.saturdayEntry?.clinicDoctor);
         },
 
         /** On-call doctor text for the next Saturday */
@@ -935,14 +963,24 @@ function app() {
                     html += `<div class="doctor-name-pill ${cls}${mine(entry.callDoctor)}">${esc(entry.callDoctor)}</div>`;
                 }
 
+                // On-call clinic format (2027+): the call doctor also staffs
+                // Saturday clinic, so tag their pill instead of repeating the
+                // name in a second clinic pill.
+                if (isClinicOnCall(entry.clinicDoctor) && entry.callDoctor) {
+                    const cls = this.getDoctorColorClass(entry.callDoctor);
+                    html += `<div class="clinic-oncall-tag ${cls}">+ Clinic</div>`;
+                }
+
                 // Backup line (only when a published backup applies to this
                 // day). Plain text, no pill — backup is a rarely used fallback.
                 if (entry.backupDoctor) {
                     html += `<div class="backup-line${mine(entry.backupDoctor)}"><span class="backup-mark" aria-hidden="true">&#8627;</span><span class="backup-label">Backup: </span>${esc(entry.backupDoctor)}</div>`;
                 }
 
-                // Clinic doctor (Saturdays only, skip "Closed")
-                if (entry.clinicDoctor && entry.clinicDoctor !== 'Closed' && entry.clinicDoctor !== '') {
+                // Separate clinic doctor (pre-2027 Saturdays; skip "Closed"
+                // and the on-call marker handled above).
+                if (entry.clinicDoctor && entry.clinicDoctor !== 'Closed'
+                        && !isClinicOnCall(entry.clinicDoctor)) {
                     const cls = this.getDoctorColorClass(entry.clinicDoctor);
                     html += `<div class="clinic-doctor-pill ${cls}${mine(entry.clinicDoctor)}"><span class="clinic-label">Clinic</span>${esc(entry.clinicDoctor)}</div>`;
                 }
@@ -1329,8 +1367,10 @@ function app() {
 
             const d = new Date(dateStr + 'T12:00:00');
             const isSat = d.getDay() === 6;
+            // The on-call clinic marker is not a separate clinic slot: clinic
+            // follows the call doctor, so treat it like a closed clinic here.
             const CLOSED = ['', 'Closed'];
-            const isClosed = v => !v || CLOSED.includes(v);
+            const isClosed = v => !v || CLOSED.includes(v) || isClinicOnCall(v);
 
             // Step 1: Saturday with BOTH call + clinic → ask clinic-vs-call first.
             // Clinic pick short-circuits (never a weekend-block swap).

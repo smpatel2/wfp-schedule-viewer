@@ -680,6 +680,7 @@ main {
 /* Filtered cells — hide other doctors' pills */
 .fc-day-filtered .doctor-name-pill,
 .fc-day-filtered .clinic-doctor-pill,
+.fc-day-filtered .clinic-oncall-tag,
 .fc-day-filtered .backup-line,
 .fc-day-filtered .holiday-pill {
     display: none;
@@ -878,6 +879,21 @@ main {
     text-overflow: ellipsis;
     line-height: 1.3;
     margin-top: 2px;
+}
+
+/* On-call clinic format (2027+): small tag under the call pill meaning
+   "this doctor also runs Saturday clinic" — no second name. */
+.clinic-oncall-tag {
+    color: color-mix(in srgb, var(--doc-color, #6B7280) 75%, black);
+    font-size: 0.625rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    line-height: 1.25;
+    padding: 1px 2px 0 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* "CLINIC" tag inside the clinic pill (hidden on phones) */

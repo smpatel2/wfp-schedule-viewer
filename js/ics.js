@@ -5,6 +5,8 @@
  * the same event conventions can be reused if we later add subscription feeds.
  */
 
+import { clinicDoctorFor } from './clinic-helpers.mjs';
+
 const TZID = 'America/Chicago';
 
 /**
@@ -26,9 +28,11 @@ export function buildPersonalICS(entries, doctorName) {
             eventLines.push(...buildCallEvent(entry, doctorName, dtstamp));
         }
 
-        if (entry.clinicDoctor === doctorName &&
-            entry.clinicDoctor !== 'Closed' &&
-            entry.clinicDoctor !== '') {
+        // On-call clinic format (2027+): the call doctor also has clinic.
+        const clinicDoctor = clinicDoctorFor(entry);
+        if (clinicDoctor === doctorName &&
+            clinicDoctor !== 'Closed' &&
+            clinicDoctor !== '') {
             eventLines.push(...buildClinicEvent(entry, doctorName, dtstamp));
         }
     }
