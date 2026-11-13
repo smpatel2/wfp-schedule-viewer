@@ -194,6 +194,9 @@ function app() {
         // --- ICS Download ---
         icsDownloading: false,
 
+        // --- Practice Schedule (.xlsx) Download ---
+        xlsxDownloading: false,
+
         // --- Admin Mode ---
         adminMode: false,
 
@@ -282,6 +285,7 @@ function app() {
                     alpine.cellHtmlCache = {};
                     alpine.myCallsFilter = false;
                     alpine.icsDownloading = false;
+                    alpine.xlsxDownloading = false;
                     alpine.editMode = false;
                     alpine.swapSelection = { a: null, b: null };
                     alpine.reassignModalVisible = false;
@@ -464,6 +468,7 @@ function app() {
             this.cellHtmlCache = {};
             this.myCallsFilter = false;
             this.icsDownloading = false;
+            this.xlsxDownloading = false;
             this.staffMode = false;
             this.adminMode = false;
         },
@@ -577,6 +582,82 @@ function app() {
                 this.showToast('Download failed. Please try again.');
             } finally {
                 this.icsDownloading = false;
+            }
+        },
+
+        /**
+         * Download the whole published practice schedule as an Excel file
+         * (all roles). Built at the moment of the click from a live server
+         * read, so it always includes the latest swaps. Unlike the .ics
+         * download there is no offline or partial fallback: a spreadsheet
+         * that is missing days, or silently out of date, is worse than a
+         * "try again" message.
+         */
+        async downloadPracticeXlsx() {
+            if (this.xlsxDownloading) return;
+            if (!this.scheduleMeta?.startDate || !this.scheduleMeta?.endDate
+                    || this.scheduleExpired) {
+                this.showToast('No published schedule to download.');
+                return;
+            }
+            const offlineMessage =
+                'You are offline. Connect to the internet and try again.';
+            if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+                this.showToast(offlineMessage);
+                return;
+            }
+
+            this.xlsxDownloading = true;
+            try {
+                const { startDate, endDate } = this.scheduleMeta;
+                let entries;
+                try {
+                    entries = await window.db.getScheduleRangeFromServer(
+                        startDate, endDate);
+                } catch (e) {
+                    const offline = e?.code === 'unavailable'
+                        || e?.code === 'failed-precondition';
+                    if (!offline) throw e;
+                    this.showToast(offlineMessage);
+                    return;
+                }
+
+                const { validateCompleteSchedule } = await import(
+                    './history-helpers.mjs?v=14'
+                );
+                const checked = validateCompleteSchedule(
+                    entries, this.scheduleMeta, 'current');
+                if (!checked.ok) {
+                    this.showToast(checked.message, { duration: 8000 });
+                    return;
+                }
+
+                let blob;
+                try {
+                    const { buildPracticeXlsx } = await import(
+                        './xlsx-builder.mjs?v=1'
+                    );
+                    blob = await buildPracticeXlsx(
+                        checked.entries, this.doctors, new Date());
+                } catch (e) {
+                    console.error('[XLSX] Build failed:', e);
+                    this.showToast(
+                        'Could not build the Excel file. Check your '
+                        + 'connection and try again.',
+                        { duration: 8000 });
+                    return;
+                }
+
+                this._downloadBlob(
+                    'WFP_Practice_Schedule_' + startDate + '_to_' + endDate
+                        + '.xlsx',
+                    blob);
+                this.showToast('Practice schedule downloaded.');
+            } catch (e) {
+                console.error('[XLSX] Download failed:', e);
+                this.showToast('Download failed. Please try again.');
+            } finally {
+                this.xlsxDownloading = false;
             }
         },
 
@@ -1754,7 +1835,12 @@ function app() {
 
         /** Trigger a client-side CSV download (same Blob/anchor pattern as the ICS button). */
         _downloadCsv(filename, csv) {
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+            this._downloadBlob(
+                filename, new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+        },
+
+        /** Trigger a client-side download of any Blob. */
+        _downloadBlob(filename, blob) {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;

@@ -591,10 +591,11 @@ main {
 }
 
 /* ============================================
-   ACTION BUTTONS ROW (Holidays + ICS download)
+   ACTION BUTTONS ROW (Holidays + ICS + Excel download)
    ============================================ */
 .calendar-actions {
     display: flex;
+    flex-wrap: wrap;
     justify-content: flex-end;
     gap: 0.5rem;
     padding: 0 1rem;
@@ -602,6 +603,7 @@ main {
 }
 
 .btn.btn-secondary.btn-ics,
+.btn.btn-secondary.btn-xlsx,
 .btn.btn-secondary.btn-holidays {
     gap: 0.5rem;
     background: var(--white);
@@ -610,13 +612,15 @@ main {
 }
 
 .btn.btn-secondary.btn-ics:hover:not(:disabled),
+.btn.btn-secondary.btn-xlsx:hover:not(:disabled),
 .btn.btn-secondary.btn-holidays:hover:not(:disabled) {
     border-color: var(--sky);
     background: var(--sky-10);
     color: var(--sky);
 }
 
-.btn.btn-secondary.btn-ics:disabled {
+.btn.btn-secondary.btn-ics:disabled,
+.btn.btn-secondary.btn-xlsx:disabled {
     opacity: 0.55;
     cursor: wait;
 }
@@ -632,12 +636,18 @@ main {
     }
 
     .btn.btn-secondary.btn-ics,
+    .btn.btn-secondary.btn-xlsx,
     .btn.btn-secondary.btn-holidays {
         flex: 1;
         justify-content: center;
         min-height: 44px;
         padding: 0.875rem 0.75rem;
         font-size: 0.9375rem;
+    }
+
+    /* The Excel button takes its own full-width line under the other two. */
+    .btn.btn-secondary.btn-xlsx {
+        flex: 1 1 100%;
     }
 }
 
